@@ -59,6 +59,15 @@ func (m *AdminMessage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if len(m.SessionPasskey) > 0 {
+		i -= len(m.SessionPasskey)
+		copy(dAtA[i:], m.SessionPasskey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SessionPasskey)))
+		i--
+		dAtA[i] = 0x6
+		i--
+		dAtA[i] = 0xaa
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -425,6 +434,62 @@ func (m *AdminMessage_DeleteFileRequest) MarshalToSizedBufferVT(dAtA []byte) (in
 	dAtA[i] = 0xb2
 	return len(dAtA) - i, nil
 }
+func (m *AdminMessage_SetScale) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_SetScale) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SetScale))
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xb8
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_BackupPreferences) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_BackupPreferences) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BackupPreferences))
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xc0
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_RestorePreferences) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_RestorePreferences) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RestorePreferences))
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xc8
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_RemoveBackupPreferences) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_RemoveBackupPreferences) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RemoveBackupPreferences))
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xd0
+	return len(dAtA) - i, nil
+}
 func (m *AdminMessage_SetOwner) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -555,6 +620,178 @@ func (m *AdminMessage_RemoveByNodenum) MarshalToSizedBufferVT(dAtA []byte) (int,
 	dAtA[i] = 0xb0
 	return len(dAtA) - i, nil
 }
+func (m *AdminMessage_SetFavoriteNode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_SetFavoriteNode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SetFavoriteNode))
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xb8
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_RemoveFavoriteNode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_RemoveFavoriteNode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RemoveFavoriteNode))
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xc0
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_SetFixedPosition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_SetFixedPosition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetFixedPosition != nil {
+		size, err := m.SetFixedPosition.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xca
+	}
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_RemoveFixedPosition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_RemoveFixedPosition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i--
+	if m.RemoveFixedPosition {
+		dAtA[i] = 1
+	} else {
+		dAtA[i] = 0
+	}
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xd0
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_SetTimeOnly) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_SetTimeOnly) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= 4
+	binary.LittleEndian.PutUint32(dAtA[i:], uint32(m.SetTimeOnly))
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xdd
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_GetUiConfigRequest) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_GetUiConfigRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i--
+	if m.GetUiConfigRequest {
+		dAtA[i] = 1
+	} else {
+		dAtA[i] = 0
+	}
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xe0
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_GetUiConfigResponse) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_GetUiConfigResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.GetUiConfigResponse != nil {
+		size, err := m.GetUiConfigResponse.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xea
+	}
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_StoreUiConfig) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_StoreUiConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StoreUiConfig != nil {
+		size, err := m.StoreUiConfig.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xf2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_SetIgnoredNode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_SetIgnoredNode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SetIgnoredNode))
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xf8
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_RemoveIgnoredNode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_RemoveIgnoredNode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RemoveIgnoredNode))
+	i--
+	dAtA[i] = 0x3
+	i--
+	dAtA[i] = 0x80
+	return len(dAtA) - i, nil
+}
 func (m *AdminMessage_BeginEditSettings) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -591,6 +828,20 @@ func (m *AdminMessage_CommitEditSettings) MarshalToSizedBufferVT(dAtA []byte) (i
 	dAtA[i] = 0x4
 	i--
 	dAtA[i] = 0x88
+	return len(dAtA) - i, nil
+}
+func (m *AdminMessage_FactoryResetDevice) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AdminMessage_FactoryResetDevice) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FactoryResetDevice))
+	i--
+	dAtA[i] = 0x5
+	i--
+	dAtA[i] = 0xf0
 	return len(dAtA) - i, nil
 }
 func (m *AdminMessage_RebootOtaSeconds) MarshalToVT(dAtA []byte) (int, error) {
@@ -654,14 +905,14 @@ func (m *AdminMessage_ShutdownSeconds) MarshalToSizedBufferVT(dAtA []byte) (int,
 	dAtA[i] = 0x90
 	return len(dAtA) - i, nil
 }
-func (m *AdminMessage_FactoryReset) MarshalToVT(dAtA []byte) (int, error) {
+func (m *AdminMessage_FactoryResetConfig) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *AdminMessage_FactoryReset) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *AdminMessage_FactoryResetConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FactoryReset))
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FactoryResetConfig))
 	i--
 	dAtA[i] = 0x6
 	i--
@@ -793,6 +1044,10 @@ func (m *AdminMessage) SizeVT() (n int) {
 	_ = l
 	if vtmsg, ok := m.PayloadVariant.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
+	}
+	l = len(m.SessionPasskey)
+	if l > 0 {
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1014,6 +1269,42 @@ func (m *AdminMessage_DeleteFileRequest) SizeVT() (n int) {
 	n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
+func (m *AdminMessage_SetScale) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.SetScale))
+	return n
+}
+func (m *AdminMessage_BackupPreferences) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.BackupPreferences))
+	return n
+}
+func (m *AdminMessage_RestorePreferences) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.RestorePreferences))
+	return n
+}
+func (m *AdminMessage_RemoveBackupPreferences) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.RemoveBackupPreferences))
+	return n
+}
 func (m *AdminMessage_SetOwner) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -1091,6 +1382,105 @@ func (m *AdminMessage_RemoveByNodenum) SizeVT() (n int) {
 	n += 2 + protohelpers.SizeOfVarint(uint64(m.RemoveByNodenum))
 	return n
 }
+func (m *AdminMessage_SetFavoriteNode) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.SetFavoriteNode))
+	return n
+}
+func (m *AdminMessage_RemoveFavoriteNode) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.RemoveFavoriteNode))
+	return n
+}
+func (m *AdminMessage_SetFixedPosition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetFixedPosition != nil {
+		l = m.SetFixedPosition.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *AdminMessage_RemoveFixedPosition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 3
+	return n
+}
+func (m *AdminMessage_SetTimeOnly) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 6
+	return n
+}
+func (m *AdminMessage_GetUiConfigRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 3
+	return n
+}
+func (m *AdminMessage_GetUiConfigResponse) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.GetUiConfigResponse != nil {
+		l = m.GetUiConfigResponse.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *AdminMessage_StoreUiConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StoreUiConfig != nil {
+		l = m.StoreUiConfig.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *AdminMessage_SetIgnoredNode) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.SetIgnoredNode))
+	return n
+}
+func (m *AdminMessage_RemoveIgnoredNode) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.RemoveIgnoredNode))
+	return n
+}
 func (m *AdminMessage_BeginEditSettings) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -1107,6 +1497,15 @@ func (m *AdminMessage_CommitEditSettings) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 3
+	return n
+}
+func (m *AdminMessage_FactoryResetDevice) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.FactoryResetDevice))
 	return n
 }
 func (m *AdminMessage_RebootOtaSeconds) SizeVT() (n int) {
@@ -1145,13 +1544,13 @@ func (m *AdminMessage_ShutdownSeconds) SizeVT() (n int) {
 	n += 2 + protohelpers.SizeOfVarint(uint64(m.ShutdownSeconds))
 	return n
 }
-func (m *AdminMessage_FactoryReset) SizeVT() (n int) {
+func (m *AdminMessage_FactoryResetConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	n += 2 + protohelpers.SizeOfVarint(uint64(m.FactoryReset))
+	n += 2 + protohelpers.SizeOfVarint(uint64(m.FactoryResetConfig))
 	return n
 }
 func (m *AdminMessage_NodedbReset) SizeVT() (n int) {
@@ -1863,6 +2262,86 @@ func (m *AdminMessage) UnmarshalVT(dAtA []byte) error {
 			}
 			m.PayloadVariant = &AdminMessage_DeleteFileRequest{DeleteFileRequest: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
+		case 23:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetScale", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_SetScale{SetScale: v}
+		case 24:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BackupPreferences", wireType)
+			}
+			var v AdminMessage_BackupLocation
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= AdminMessage_BackupLocation(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_BackupPreferences{BackupPreferences: v}
+		case 25:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RestorePreferences", wireType)
+			}
+			var v AdminMessage_BackupLocation
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= AdminMessage_BackupLocation(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_RestorePreferences{RestorePreferences: v}
+		case 26:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemoveBackupPreferences", wireType)
+			}
+			var v AdminMessage_BackupLocation
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= AdminMessage_BackupLocation(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_RemoveBackupPreferences{RemoveBackupPreferences: v}
 		case 32:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetOwner", wireType)
@@ -2111,6 +2590,262 @@ func (m *AdminMessage) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.PayloadVariant = &AdminMessage_RemoveByNodenum{RemoveByNodenum: v}
+		case 39:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetFavoriteNode", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_SetFavoriteNode{SetFavoriteNode: v}
+		case 40:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemoveFavoriteNode", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_RemoveFavoriteNode{RemoveFavoriteNode: v}
+		case 41:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetFixedPosition", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.PayloadVariant.(*AdminMessage_SetFixedPosition); ok {
+				if err := oneof.SetFixedPosition.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &Position{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.PayloadVariant = &AdminMessage_SetFixedPosition{SetFixedPosition: v}
+			}
+			iNdEx = postIndex
+		case 42:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemoveFixedPosition", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			b := bool(v != 0)
+			m.PayloadVariant = &AdminMessage_RemoveFixedPosition{RemoveFixedPosition: b}
+		case 43:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetTimeOnly", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.PayloadVariant = &AdminMessage_SetTimeOnly{SetTimeOnly: v}
+		case 44:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GetUiConfigRequest", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			b := bool(v != 0)
+			m.PayloadVariant = &AdminMessage_GetUiConfigRequest{GetUiConfigRequest: b}
+		case 45:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GetUiConfigResponse", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.PayloadVariant.(*AdminMessage_GetUiConfigResponse); ok {
+				if err := oneof.GetUiConfigResponse.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeviceUIConfig{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.PayloadVariant = &AdminMessage_GetUiConfigResponse{GetUiConfigResponse: v}
+			}
+			iNdEx = postIndex
+		case 46:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreUiConfig", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.PayloadVariant.(*AdminMessage_StoreUiConfig); ok {
+				if err := oneof.StoreUiConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeviceUIConfig{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.PayloadVariant = &AdminMessage_StoreUiConfig{StoreUiConfig: v}
+			}
+			iNdEx = postIndex
+		case 47:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetIgnoredNode", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_SetIgnoredNode{SetIgnoredNode: v}
+		case 48:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemoveIgnoredNode", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_RemoveIgnoredNode{RemoveIgnoredNode: v}
 		case 64:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BeginEditSettings", wireType)
@@ -2153,6 +2888,26 @@ func (m *AdminMessage) UnmarshalVT(dAtA []byte) error {
 			}
 			b := bool(v != 0)
 			m.PayloadVariant = &AdminMessage_CommitEditSettings{CommitEditSettings: b}
+		case 94:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FactoryResetDevice", wireType)
+			}
+			var v int32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PayloadVariant = &AdminMessage_FactoryResetDevice{FactoryResetDevice: v}
 		case 95:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RebootOtaSeconds", wireType)
@@ -2236,7 +2991,7 @@ func (m *AdminMessage) UnmarshalVT(dAtA []byte) error {
 			m.PayloadVariant = &AdminMessage_ShutdownSeconds{ShutdownSeconds: v}
 		case 99:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FactoryReset", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field FactoryResetConfig", wireType)
 			}
 			var v int32
 			for shift := uint(0); ; shift += 7 {
@@ -2253,7 +3008,7 @@ func (m *AdminMessage) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.PayloadVariant = &AdminMessage_FactoryReset{FactoryReset: v}
+			m.PayloadVariant = &AdminMessage_FactoryResetConfig{FactoryResetConfig: v}
 		case 100:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NodedbReset", wireType)
@@ -2274,6 +3029,40 @@ func (m *AdminMessage) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.PayloadVariant = &AdminMessage_NodedbReset{NodedbReset: v}
+		case 101:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SessionPasskey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SessionPasskey = append(m.SessionPasskey[:0], dAtA[iNdEx:postIndex]...)
+			if m.SessionPasskey == nil {
+				m.SessionPasskey = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

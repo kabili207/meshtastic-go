@@ -139,6 +139,20 @@ func (m *TAKPacket_Chat) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *TAKPacket_Detail) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *TAKPacket_Detail) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.Detail)
+	copy(dAtA[i:], m.Detail)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Detail)))
+	i--
+	dAtA[i] = 0x3a
+	return len(dAtA) - i, nil
+}
 func (m *GeoChat) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -168,6 +182,13 @@ func (m *GeoChat) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ToCallsign != nil {
+		i -= len(*m.ToCallsign)
+		copy(dAtA[i:], *m.ToCallsign)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.ToCallsign)))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.To != nil {
 		i -= len(*m.To)
@@ -426,6 +447,16 @@ func (m *TAKPacket_Chat) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *TAKPacket_Detail) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Detail)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
 func (m *GeoChat) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -438,6 +469,10 @@ func (m *GeoChat) SizeVT() (n int) {
 	}
 	if m.To != nil {
 		l = len(*m.To)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ToCallsign != nil {
+		l = len(*m.ToCallsign)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -755,6 +790,39 @@ func (m *TAKPacket) UnmarshalVT(dAtA []byte) error {
 				m.PayloadVariant = &TAKPacket_Chat{Chat: v}
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Detail", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := make([]byte, postIndex-iNdEx)
+			copy(v, dAtA[iNdEx:postIndex])
+			m.PayloadVariant = &TAKPacket_Detail{Detail: v}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -870,6 +938,39 @@ func (m *GeoChat) UnmarshalVT(dAtA []byte) error {
 			}
 			s := string(dAtA[iNdEx:postIndex])
 			m.To = &s
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ToCallsign", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.ToCallsign = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

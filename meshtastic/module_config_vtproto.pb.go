@@ -48,6 +48,26 @@ func (m *ModuleConfig_MQTTConfig) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MapReportSettings != nil {
+		size, err := m.MapReportSettings.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x5a
+	}
+	if m.MapReportingEnabled {
+		i--
+		if m.MapReportingEnabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x50
+	}
 	if m.ProxyToClientEnabled {
 		i--
 		if m.ProxyToClientEnabled {
@@ -123,6 +143,49 @@ func (m *ModuleConfig_MQTTConfig) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		} else {
 			dAtA[i] = 0
 		}
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ModuleConfig_MapReportSettings) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ModuleConfig_MapReportSettings) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ModuleConfig_MapReportSettings) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PositionPrecision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PositionPrecision))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.PublishIntervalSecs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PublishIntervalSecs))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -224,6 +287,16 @@ func (m *ModuleConfig_NeighborInfoConfig) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.TransmitOverLora {
+		i--
+		if m.TransmitOverLora {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.UpdateInterval != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.UpdateInterval))
 		i--
@@ -282,13 +355,8 @@ func (m *ModuleConfig_DetectionSensorConfig) MarshalToSizedBufferVT(dAtA []byte)
 		i--
 		dAtA[i] = 0x40
 	}
-	if m.DetectionTriggeredHigh {
-		i--
-		if m.DetectionTriggeredHigh {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
+	if m.DetectionTriggerType != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DetectionTriggerType))
 		i--
 		dAtA[i] = 0x38
 	}
@@ -439,6 +507,16 @@ func (m *ModuleConfig_PaxcounterConfig) MarshalToSizedBufferVT(dAtA []byte) (int
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.BleThreshold != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BleThreshold))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.WifiThreshold != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.WifiThreshold))
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.PaxcounterUpdateInterval != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PaxcounterUpdateInterval))
@@ -734,6 +812,16 @@ func (m *ModuleConfig_StoreForwardConfig) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.IsServer {
+		i--
+		if m.IsServer {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.HistoryReturnWindow != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HistoryReturnWindow))
 		i--
@@ -859,6 +947,31 @@ func (m *ModuleConfig_TelemetryConfig) MarshalToSizedBufferVT(dAtA []byte) (int,
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.HealthScreenEnabled {
+		i--
+		if m.HealthScreenEnabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.HealthUpdateInterval != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HealthUpdateInterval))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.HealthMeasurementEnabled {
+		i--
+		if m.HealthMeasurementEnabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x58
 	}
 	if m.PowerScreenEnabled {
 		i--
@@ -1492,6 +1605,29 @@ func (m *ModuleConfig_MQTTConfig) SizeVT() (n int) {
 	if m.ProxyToClientEnabled {
 		n += 2
 	}
+	if m.MapReportingEnabled {
+		n += 2
+	}
+	if m.MapReportSettings != nil {
+		l = m.MapReportSettings.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ModuleConfig_MapReportSettings) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PublishIntervalSecs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PublishIntervalSecs))
+	}
+	if m.PositionPrecision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PositionPrecision))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1530,6 +1666,9 @@ func (m *ModuleConfig_NeighborInfoConfig) SizeVT() (n int) {
 	if m.UpdateInterval != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.UpdateInterval))
 	}
+	if m.TransmitOverLora {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1559,8 +1698,8 @@ func (m *ModuleConfig_DetectionSensorConfig) SizeVT() (n int) {
 	if m.MonitorPin != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MonitorPin))
 	}
-	if m.DetectionTriggeredHigh {
-		n += 2
+	if m.DetectionTriggerType != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DetectionTriggerType))
 	}
 	if m.UsePullup {
 		n += 2
@@ -1611,6 +1750,12 @@ func (m *ModuleConfig_PaxcounterConfig) SizeVT() (n int) {
 	}
 	if m.PaxcounterUpdateInterval != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PaxcounterUpdateInterval))
+	}
+	if m.WifiThreshold != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.WifiThreshold))
+	}
+	if m.BleThreshold != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.BleThreshold))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1726,6 +1871,9 @@ func (m *ModuleConfig_StoreForwardConfig) SizeVT() (n int) {
 	if m.HistoryReturnWindow != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.HistoryReturnWindow))
 	}
+	if m.IsServer {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1783,6 +1931,15 @@ func (m *ModuleConfig_TelemetryConfig) SizeVT() (n int) {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PowerUpdateInterval))
 	}
 	if m.PowerScreenEnabled {
+		n += 2
+	}
+	if m.HealthMeasurementEnabled {
+		n += 2
+	}
+	if m.HealthUpdateInterval != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.HealthUpdateInterval))
+	}
+	if m.HealthScreenEnabled {
 		n += 2
 	}
 	n += len(m.unknownFields)
@@ -2304,6 +2461,151 @@ func (m *ModuleConfig_MQTTConfig) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.ProxyToClientEnabled = bool(v != 0)
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MapReportingEnabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.MapReportingEnabled = bool(v != 0)
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MapReportSettings", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.MapReportSettings == nil {
+				m.MapReportSettings = &ModuleConfig_MapReportSettings{}
+			}
+			if err := m.MapReportSettings.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ModuleConfig_MapReportSettings) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ModuleConfig_MapReportSettings: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ModuleConfig_MapReportSettings: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PublishIntervalSecs", wireType)
+			}
+			m.PublishIntervalSecs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PublishIntervalSecs |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PositionPrecision", wireType)
+			}
+			m.PositionPrecision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PositionPrecision |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -2519,6 +2821,26 @@ func (m *ModuleConfig_NeighborInfoConfig) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TransmitOverLora", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.TransmitOverLora = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -2701,9 +3023,9 @@ func (m *ModuleConfig_DetectionSensorConfig) UnmarshalVT(dAtA []byte) error {
 			}
 		case 7:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DetectionTriggeredHigh", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field DetectionTriggerType", wireType)
 			}
-			var v int
+			m.DetectionTriggerType = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -2713,12 +3035,11 @@ func (m *ModuleConfig_DetectionSensorConfig) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				m.DetectionTriggerType |= ModuleConfig_DetectionSensorConfig_TriggerType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.DetectionTriggeredHigh = bool(v != 0)
 		case 8:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UsePullup", wireType)
@@ -3010,6 +3331,44 @@ func (m *ModuleConfig_PaxcounterConfig) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.PaxcounterUpdateInterval |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WifiThreshold", wireType)
+			}
+			m.WifiThreshold = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.WifiThreshold |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BleThreshold", wireType)
+			}
+			m.BleThreshold = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BleThreshold |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3714,6 +4073,26 @@ func (m *ModuleConfig_StoreForwardConfig) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IsServer", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.IsServer = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -4071,6 +4450,65 @@ func (m *ModuleConfig_TelemetryConfig) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.PowerScreenEnabled = bool(v != 0)
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HealthMeasurementEnabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.HealthMeasurementEnabled = bool(v != 0)
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HealthUpdateInterval", wireType)
+			}
+			m.HealthUpdateInterval = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HealthUpdateInterval |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HealthScreenEnabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.HealthScreenEnabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

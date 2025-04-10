@@ -3,6 +3,11 @@ package emulated
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
+	"sync"
+	"time"
+
 	"github.com/charmbracelet/log"
 	"github.com/meshnet-gophers/meshtastic-go"
 	pb "github.com/meshnet-gophers/meshtastic-go/meshtastic"
@@ -11,10 +16,6 @@ import (
 	"github.com/meshnet-gophers/meshtastic-go/transport"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
-	"io"
-	"net"
-	"sync"
-	"time"
 )
 
 const (
@@ -359,9 +360,9 @@ func (r *Radio) broadcastNodeInfo(ctx context.Context) error {
 func (r *Radio) broadcastPosition(ctx context.Context) error {
 	r.logger.Info("broadcasting Position")
 	position := &pb.Position{
-		LatitudeI:  r.cfg.PositionLatitudeI,
-		LongitudeI: r.cfg.PositionLongitudeI,
-		Altitude:   r.cfg.PositionAltitude,
+		LatitudeI:  &r.cfg.PositionLatitudeI,
+		LongitudeI: &r.cfg.PositionLongitudeI,
+		Altitude:   &r.cfg.PositionAltitude,
 		Time:       uint32(time.Now().Unix()),
 	}
 	positionBytes, err := proto.Marshal(position)

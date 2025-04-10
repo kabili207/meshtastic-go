@@ -50,26 +50,31 @@ func (m *DeviceMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.AirUtilTx != 0 {
+	if m.UptimeSeconds != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.UptimeSeconds))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.AirUtilTx != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.AirUtilTx))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.AirUtilTx))))
 		i--
 		dAtA[i] = 0x25
 	}
-	if m.ChannelUtilization != 0 {
+	if m.ChannelUtilization != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.ChannelUtilization))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.ChannelUtilization))))
 		i--
 		dAtA[i] = 0x1d
 	}
-	if m.Voltage != 0 {
+	if m.Voltage != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Voltage))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Voltage))))
 		i--
 		dAtA[i] = 0x15
 	}
-	if m.BatteryLevel != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BatteryLevel))
+	if m.BatteryLevel != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.BatteryLevel))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -106,39 +111,146 @@ func (m *EnvironmentMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Current != 0 {
+	if m.SoilTemperature != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Current))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.SoilTemperature))))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xb5
+	}
+	if m.SoilMoisture != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.SoilMoisture))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xa8
+	}
+	if m.Rainfall_24H != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Rainfall_24H))))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xa5
+	}
+	if m.Rainfall_1H != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Rainfall_1H))))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x9d
+	}
+	if m.Radiation != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Radiation))))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x95
+	}
+	if m.WindLull != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.WindLull))))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x8d
+	}
+	if m.WindGust != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.WindGust))))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x85
+	}
+	if m.Weight != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Weight))))
+		i--
+		dAtA[i] = 0x7d
+	}
+	if m.WindSpeed != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.WindSpeed))))
+		i--
+		dAtA[i] = 0x75
+	}
+	if m.WindDirection != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.WindDirection))
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.UvLux != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.UvLux))))
+		i--
+		dAtA[i] = 0x65
+	}
+	if m.IrLux != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.IrLux))))
+		i--
+		dAtA[i] = 0x5d
+	}
+	if m.WhiteLux != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.WhiteLux))))
+		i--
+		dAtA[i] = 0x55
+	}
+	if m.Lux != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Lux))))
+		i--
+		dAtA[i] = 0x4d
+	}
+	if m.Distance != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Distance))))
+		i--
+		dAtA[i] = 0x45
+	}
+	if m.Iaq != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Iaq))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Current != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Current))))
 		i--
 		dAtA[i] = 0x35
 	}
-	if m.Voltage != 0 {
+	if m.Voltage != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Voltage))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Voltage))))
 		i--
 		dAtA[i] = 0x2d
 	}
-	if m.GasResistance != 0 {
+	if m.GasResistance != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.GasResistance))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.GasResistance))))
 		i--
 		dAtA[i] = 0x25
 	}
-	if m.BarometricPressure != 0 {
+	if m.BarometricPressure != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.BarometricPressure))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.BarometricPressure))))
 		i--
 		dAtA[i] = 0x1d
 	}
-	if m.RelativeHumidity != 0 {
+	if m.RelativeHumidity != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.RelativeHumidity))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.RelativeHumidity))))
 		i--
 		dAtA[i] = 0x15
 	}
-	if m.Temperature != 0 {
+	if m.Temperature != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Temperature))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Temperature))))
 		i--
 		dAtA[i] = 0xd
 	}
@@ -175,39 +287,39 @@ func (m *PowerMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Ch3Current != 0 {
+	if m.Ch3Current != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Ch3Current))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Ch3Current))))
 		i--
 		dAtA[i] = 0x35
 	}
-	if m.Ch3Voltage != 0 {
+	if m.Ch3Voltage != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Ch3Voltage))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Ch3Voltage))))
 		i--
 		dAtA[i] = 0x2d
 	}
-	if m.Ch2Current != 0 {
+	if m.Ch2Current != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Ch2Current))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Ch2Current))))
 		i--
 		dAtA[i] = 0x25
 	}
-	if m.Ch2Voltage != 0 {
+	if m.Ch2Voltage != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Ch2Voltage))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Ch2Voltage))))
 		i--
 		dAtA[i] = 0x1d
 	}
-	if m.Ch1Current != 0 {
+	if m.Ch1Current != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Ch1Current))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Ch1Current))))
 		i--
 		dAtA[i] = 0x15
 	}
-	if m.Ch1Voltage != 0 {
+	if m.Ch1Voltage != nil {
 		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Ch1Voltage))))
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Ch1Voltage))))
 		i--
 		dAtA[i] = 0xd
 	}
@@ -244,63 +356,207 @@ func (m *AirQualityMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Particles_100Um != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Particles_100Um))
+	if m.Co2 != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Co2))
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.Particles_100Um != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Particles_100Um))
 		i--
 		dAtA[i] = 0x60
 	}
-	if m.Particles_50Um != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Particles_50Um))
+	if m.Particles_50Um != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Particles_50Um))
 		i--
 		dAtA[i] = 0x58
 	}
-	if m.Particles_25Um != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Particles_25Um))
+	if m.Particles_25Um != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Particles_25Um))
 		i--
 		dAtA[i] = 0x50
 	}
-	if m.Particles_10Um != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Particles_10Um))
+	if m.Particles_10Um != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Particles_10Um))
 		i--
 		dAtA[i] = 0x48
 	}
-	if m.Particles_05Um != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Particles_05Um))
+	if m.Particles_05Um != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Particles_05Um))
 		i--
 		dAtA[i] = 0x40
 	}
-	if m.Particles_03Um != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Particles_03Um))
+	if m.Particles_03Um != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Particles_03Um))
 		i--
 		dAtA[i] = 0x38
 	}
-	if m.Pm100Environmental != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Pm100Environmental))
+	if m.Pm100Environmental != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Pm100Environmental))
 		i--
 		dAtA[i] = 0x30
 	}
-	if m.Pm25Environmental != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Pm25Environmental))
+	if m.Pm25Environmental != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Pm25Environmental))
 		i--
 		dAtA[i] = 0x28
 	}
-	if m.Pm10Environmental != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Pm10Environmental))
+	if m.Pm10Environmental != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Pm10Environmental))
 		i--
 		dAtA[i] = 0x20
 	}
-	if m.Pm100Standard != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Pm100Standard))
+	if m.Pm100Standard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Pm100Standard))
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.Pm25Standard != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Pm25Standard))
+	if m.Pm25Standard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Pm25Standard))
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.Pm10Standard != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Pm10Standard))
+	if m.Pm10Standard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Pm10Standard))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LocalStats) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LocalStats) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LocalStats) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.NumTxRelayCanceled != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumTxRelayCanceled))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.NumTxRelay != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumTxRelay))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.NumRxDupe != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumRxDupe))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.NumTotalNodes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumTotalNodes))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.NumOnlineNodes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumOnlineNodes))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.NumPacketsRxBad != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumPacketsRxBad))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.NumPacketsRx != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumPacketsRx))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.NumPacketsTx != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumPacketsTx))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.AirUtilTx != 0 {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.AirUtilTx))))
+		i--
+		dAtA[i] = 0x1d
+	}
+	if m.ChannelUtilization != 0 {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.ChannelUtilization))))
+		i--
+		dAtA[i] = 0x15
+	}
+	if m.UptimeSeconds != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.UptimeSeconds))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *HealthMetrics) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *HealthMetrics) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *HealthMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Temperature != nil {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(*m.Temperature))))
+		i--
+		dAtA[i] = 0x1d
+	}
+	if m.SpO2 != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.SpO2))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.HeartBpm != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.HeartBpm))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -431,23 +687,108 @@ func (m *Telemetry_PowerMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Telemetry_LocalStats) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Telemetry_LocalStats) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.LocalStats != nil {
+		size, err := m.LocalStats.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Telemetry_HealthMetrics) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Telemetry_HealthMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.HealthMetrics != nil {
+		size, err := m.HealthMetrics.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Nau7802Config) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Nau7802Config) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Nau7802Config) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CalibrationFactor != 0 {
+		i -= 4
+		binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.CalibrationFactor))))
+		i--
+		dAtA[i] = 0x15
+	}
+	if m.ZeroOffset != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ZeroOffset))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *DeviceMetrics) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.BatteryLevel != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.BatteryLevel))
+	if m.BatteryLevel != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.BatteryLevel))
 	}
-	if m.Voltage != 0 {
+	if m.Voltage != nil {
 		n += 5
 	}
-	if m.ChannelUtilization != 0 {
+	if m.ChannelUtilization != nil {
 		n += 5
 	}
-	if m.AirUtilTx != 0 {
+	if m.AirUtilTx != nil {
 		n += 5
+	}
+	if m.UptimeSeconds != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.UptimeSeconds))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -459,23 +800,71 @@ func (m *EnvironmentMetrics) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Temperature != 0 {
+	if m.Temperature != nil {
 		n += 5
 	}
-	if m.RelativeHumidity != 0 {
+	if m.RelativeHumidity != nil {
 		n += 5
 	}
-	if m.BarometricPressure != 0 {
+	if m.BarometricPressure != nil {
 		n += 5
 	}
-	if m.GasResistance != 0 {
+	if m.GasResistance != nil {
 		n += 5
 	}
-	if m.Voltage != 0 {
+	if m.Voltage != nil {
 		n += 5
 	}
-	if m.Current != 0 {
+	if m.Current != nil {
 		n += 5
+	}
+	if m.Iaq != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Iaq))
+	}
+	if m.Distance != nil {
+		n += 5
+	}
+	if m.Lux != nil {
+		n += 5
+	}
+	if m.WhiteLux != nil {
+		n += 5
+	}
+	if m.IrLux != nil {
+		n += 5
+	}
+	if m.UvLux != nil {
+		n += 5
+	}
+	if m.WindDirection != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.WindDirection))
+	}
+	if m.WindSpeed != nil {
+		n += 5
+	}
+	if m.Weight != nil {
+		n += 5
+	}
+	if m.WindGust != nil {
+		n += 6
+	}
+	if m.WindLull != nil {
+		n += 6
+	}
+	if m.Radiation != nil {
+		n += 6
+	}
+	if m.Rainfall_1H != nil {
+		n += 6
+	}
+	if m.Rainfall_24H != nil {
+		n += 6
+	}
+	if m.SoilMoisture != nil {
+		n += 2 + protohelpers.SizeOfVarint(uint64(*m.SoilMoisture))
+	}
+	if m.SoilTemperature != nil {
+		n += 6
 	}
 	n += len(m.unknownFields)
 	return n
@@ -487,22 +876,22 @@ func (m *PowerMetrics) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Ch1Voltage != 0 {
+	if m.Ch1Voltage != nil {
 		n += 5
 	}
-	if m.Ch1Current != 0 {
+	if m.Ch1Current != nil {
 		n += 5
 	}
-	if m.Ch2Voltage != 0 {
+	if m.Ch2Voltage != nil {
 		n += 5
 	}
-	if m.Ch2Current != 0 {
+	if m.Ch2Current != nil {
 		n += 5
 	}
-	if m.Ch3Voltage != 0 {
+	if m.Ch3Voltage != nil {
 		n += 5
 	}
-	if m.Ch3Current != 0 {
+	if m.Ch3Current != nil {
 		n += 5
 	}
 	n += len(m.unknownFields)
@@ -515,41 +904,106 @@ func (m *AirQualityMetrics) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Pm10Standard != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Pm10Standard))
+	if m.Pm10Standard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Pm10Standard))
 	}
-	if m.Pm25Standard != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Pm25Standard))
+	if m.Pm25Standard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Pm25Standard))
 	}
-	if m.Pm100Standard != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Pm100Standard))
+	if m.Pm100Standard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Pm100Standard))
 	}
-	if m.Pm10Environmental != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Pm10Environmental))
+	if m.Pm10Environmental != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Pm10Environmental))
 	}
-	if m.Pm25Environmental != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Pm25Environmental))
+	if m.Pm25Environmental != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Pm25Environmental))
 	}
-	if m.Pm100Environmental != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Pm100Environmental))
+	if m.Pm100Environmental != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Pm100Environmental))
 	}
-	if m.Particles_03Um != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Particles_03Um))
+	if m.Particles_03Um != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Particles_03Um))
 	}
-	if m.Particles_05Um != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Particles_05Um))
+	if m.Particles_05Um != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Particles_05Um))
 	}
-	if m.Particles_10Um != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Particles_10Um))
+	if m.Particles_10Um != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Particles_10Um))
 	}
-	if m.Particles_25Um != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Particles_25Um))
+	if m.Particles_25Um != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Particles_25Um))
 	}
-	if m.Particles_50Um != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Particles_50Um))
+	if m.Particles_50Um != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Particles_50Um))
 	}
-	if m.Particles_100Um != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Particles_100Um))
+	if m.Particles_100Um != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Particles_100Um))
+	}
+	if m.Co2 != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Co2))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *LocalStats) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UptimeSeconds != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.UptimeSeconds))
+	}
+	if m.ChannelUtilization != 0 {
+		n += 5
+	}
+	if m.AirUtilTx != 0 {
+		n += 5
+	}
+	if m.NumPacketsTx != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumPacketsTx))
+	}
+	if m.NumPacketsRx != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumPacketsRx))
+	}
+	if m.NumPacketsRxBad != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumPacketsRxBad))
+	}
+	if m.NumOnlineNodes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumOnlineNodes))
+	}
+	if m.NumTotalNodes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumTotalNodes))
+	}
+	if m.NumRxDupe != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumRxDupe))
+	}
+	if m.NumTxRelay != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumTxRelay))
+	}
+	if m.NumTxRelayCanceled != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumTxRelayCanceled))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *HealthMetrics) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HeartBpm != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.HeartBpm))
+	}
+	if m.SpO2 != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.SpO2))
+	}
+	if m.Temperature != nil {
+		n += 5
 	}
 	n += len(m.unknownFields)
 	return n
@@ -619,6 +1073,46 @@ func (m *Telemetry_PowerMetrics) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Telemetry_LocalStats) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LocalStats != nil {
+		l = m.LocalStats.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Telemetry_HealthMetrics) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HealthMetrics != nil {
+		l = m.HealthMetrics.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Nau7802Config) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ZeroOffset != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ZeroOffset))
+	}
+	if m.CalibrationFactor != 0 {
+		n += 5
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *DeviceMetrics) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -652,7 +1146,7 @@ func (m *DeviceMetrics) UnmarshalVT(dAtA []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BatteryLevel", wireType)
 			}
-			m.BatteryLevel = 0
+			var v uint32
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -662,11 +1156,12 @@ func (m *DeviceMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.BatteryLevel |= uint32(b&0x7F) << shift
+				v |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.BatteryLevel = &v
 		case 2:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Voltage", wireType)
@@ -677,7 +1172,8 @@ func (m *DeviceMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Voltage = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Voltage = &v2
 		case 3:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ChannelUtilization", wireType)
@@ -688,7 +1184,8 @@ func (m *DeviceMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.ChannelUtilization = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.ChannelUtilization = &v2
 		case 4:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AirUtilTx", wireType)
@@ -699,7 +1196,28 @@ func (m *DeviceMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.AirUtilTx = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.AirUtilTx = &v2
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UptimeSeconds", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.UptimeSeconds = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -761,7 +1279,8 @@ func (m *EnvironmentMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Temperature = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Temperature = &v2
 		case 2:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RelativeHumidity", wireType)
@@ -772,7 +1291,8 @@ func (m *EnvironmentMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.RelativeHumidity = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.RelativeHumidity = &v2
 		case 3:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BarometricPressure", wireType)
@@ -783,7 +1303,8 @@ func (m *EnvironmentMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.BarometricPressure = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.BarometricPressure = &v2
 		case 4:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field GasResistance", wireType)
@@ -794,7 +1315,8 @@ func (m *EnvironmentMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.GasResistance = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.GasResistance = &v2
 		case 5:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Voltage", wireType)
@@ -805,7 +1327,8 @@ func (m *EnvironmentMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Voltage = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Voltage = &v2
 		case 6:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Current", wireType)
@@ -816,7 +1339,224 @@ func (m *EnvironmentMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Current = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Current = &v2
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Iaq", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Iaq = &v
+		case 8:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Distance", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Distance = &v2
+		case 9:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Lux", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Lux = &v2
+		case 10:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WhiteLux", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.WhiteLux = &v2
+		case 11:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IrLux", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.IrLux = &v2
+		case 12:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UvLux", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.UvLux = &v2
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WindDirection", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.WindDirection = &v
+		case 14:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WindSpeed", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.WindSpeed = &v2
+		case 15:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Weight", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Weight = &v2
+		case 16:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WindGust", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.WindGust = &v2
+		case 17:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WindLull", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.WindLull = &v2
+		case 18:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radiation", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Radiation = &v2
+		case 19:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Rainfall_1H", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Rainfall_1H = &v2
+		case 20:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Rainfall_24H", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Rainfall_24H = &v2
+		case 21:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SoilMoisture", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.SoilMoisture = &v
+		case 22:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SoilTemperature", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.SoilTemperature = &v2
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -878,7 +1618,8 @@ func (m *PowerMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Ch1Voltage = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Ch1Voltage = &v2
 		case 2:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ch1Current", wireType)
@@ -889,7 +1630,8 @@ func (m *PowerMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Ch1Current = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Ch1Current = &v2
 		case 3:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ch2Voltage", wireType)
@@ -900,7 +1642,8 @@ func (m *PowerMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Ch2Voltage = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Ch2Voltage = &v2
 		case 4:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ch2Current", wireType)
@@ -911,7 +1654,8 @@ func (m *PowerMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Ch2Current = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Ch2Current = &v2
 		case 5:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ch3Voltage", wireType)
@@ -922,7 +1666,8 @@ func (m *PowerMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Ch3Voltage = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Ch3Voltage = &v2
 		case 6:
 			if wireType != 5 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ch3Current", wireType)
@@ -933,7 +1678,8 @@ func (m *PowerMetrics) UnmarshalVT(dAtA []byte) error {
 			}
 			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
-			m.Ch3Current = float32(math.Float32frombits(v))
+			v2 := float32(math.Float32frombits(v))
+			m.Ch3Current = &v2
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -989,7 +1735,7 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Pm10Standard", wireType)
 			}
-			m.Pm10Standard = 0
+			var v uint32
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -999,54 +1745,349 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Pm10Standard |= uint32(b&0x7F) << shift
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Pm10Standard = &v
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pm25Standard", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Pm25Standard = &v
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pm100Standard", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Pm100Standard = &v
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pm10Environmental", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Pm10Environmental = &v
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pm25Environmental", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Pm25Environmental = &v
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pm100Environmental", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Pm100Environmental = &v
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Particles_03Um", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Particles_03Um = &v
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Particles_05Um", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Particles_05Um = &v
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Particles_10Um", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Particles_10Um = &v
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Particles_25Um", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Particles_25Um = &v
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Particles_50Um", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Particles_50Um = &v
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Particles_100Um", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Particles_100Um = &v
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Co2", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Co2 = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LocalStats) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LocalStats: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LocalStats: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UptimeSeconds", wireType)
+			}
+			m.UptimeSeconds = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UptimeSeconds |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Pm25Standard", wireType)
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChannelUtilization", wireType)
 			}
-			m.Pm25Standard = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Pm25Standard |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
 			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.ChannelUtilization = float32(math.Float32frombits(v))
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Pm100Standard", wireType)
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AirUtilTx", wireType)
 			}
-			m.Pm100Standard = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Pm100Standard |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
 			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.AirUtilTx = float32(math.Float32frombits(v))
 		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Pm10Environmental", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumPacketsTx", wireType)
 			}
-			m.Pm10Environmental = 0
+			m.NumPacketsTx = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1056,16 +2097,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Pm10Environmental |= uint32(b&0x7F) << shift
+				m.NumPacketsTx |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 5:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Pm25Environmental", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumPacketsRx", wireType)
 			}
-			m.Pm25Environmental = 0
+			m.NumPacketsRx = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1075,16 +2116,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Pm25Environmental |= uint32(b&0x7F) << shift
+				m.NumPacketsRx |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 6:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Pm100Environmental", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumPacketsRxBad", wireType)
 			}
-			m.Pm100Environmental = 0
+			m.NumPacketsRxBad = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1094,16 +2135,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Pm100Environmental |= uint32(b&0x7F) << shift
+				m.NumPacketsRxBad |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 7:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Particles_03Um", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumOnlineNodes", wireType)
 			}
-			m.Particles_03Um = 0
+			m.NumOnlineNodes = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1113,16 +2154,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Particles_03Um |= uint32(b&0x7F) << shift
+				m.NumOnlineNodes |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 8:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Particles_05Um", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumTotalNodes", wireType)
 			}
-			m.Particles_05Um = 0
+			m.NumTotalNodes = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1132,16 +2173,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Particles_05Um |= uint32(b&0x7F) << shift
+				m.NumTotalNodes |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 9:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Particles_10Um", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumRxDupe", wireType)
 			}
-			m.Particles_10Um = 0
+			m.NumRxDupe = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1151,16 +2192,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Particles_10Um |= uint32(b&0x7F) << shift
+				m.NumRxDupe |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 10:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Particles_25Um", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumTxRelay", wireType)
 			}
-			m.Particles_25Um = 0
+			m.NumTxRelay = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1170,16 +2211,16 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Particles_25Um |= uint32(b&0x7F) << shift
+				m.NumTxRelay |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 11:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Particles_50Um", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumTxRelayCanceled", wireType)
 			}
-			m.Particles_50Um = 0
+			m.NumTxRelayCanceled = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1189,16 +2230,67 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Particles_50Um |= uint32(b&0x7F) << shift
+				m.NumTxRelayCanceled |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 12:
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *HealthMetrics) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: HealthMetrics: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: HealthMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Particles_100Um", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field HeartBpm", wireType)
 			}
-			m.Particles_100Um = 0
+			var v uint32
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1208,11 +2300,44 @@ func (m *AirQualityMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Particles_100Um |= uint32(b&0x7F) << shift
+				v |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.HeartBpm = &v
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SpO2", wireType)
+			}
+			var v uint32
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.SpO2 = &v
+		case 3:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Temperature", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			v2 := float32(math.Float32frombits(v))
+			m.Temperature = &v2
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1438,6 +2563,169 @@ func (m *Telemetry) UnmarshalVT(dAtA []byte) error {
 				m.Variant = &Telemetry_PowerMetrics{PowerMetrics: v}
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LocalStats", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Variant.(*Telemetry_LocalStats); ok {
+				if err := oneof.LocalStats.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &LocalStats{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Variant = &Telemetry_LocalStats{LocalStats: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HealthMetrics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Variant.(*Telemetry_HealthMetrics); ok {
+				if err := oneof.HealthMetrics.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &HealthMetrics{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Variant = &Telemetry_HealthMetrics{HealthMetrics: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Nau7802Config) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Nau7802Config: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Nau7802Config: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ZeroOffset", wireType)
+			}
+			m.ZeroOffset = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ZeroOffset |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CalibrationFactor", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.CalibrationFactor = float32(math.Float32frombits(v))
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
