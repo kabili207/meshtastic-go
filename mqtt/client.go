@@ -2,11 +2,12 @@ package mqtt
 
 import (
 	"errors"
-	"github.com/charmbracelet/log"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 const MQTTProtoTopic = "/2/e/"
@@ -18,18 +19,29 @@ type Client struct {
 	topicRoot string
 	clientID  string
 	client    mqtt.Client
+	log       *slog.Logger
 	sync.RWMutex
 	channelHandlers map[string][]HandlerFunc
+
+	OnConnect        OnConnectHandler
+	OnConnectionLost ConnectionLostHandler
+	OnReconnecting   ReconnectHandler
 }
 
 type HandlerFunc func(message Message)
 
-var DefaultClient = Client{
-	server:    "tcp://mqtt.meshtastic.org:1883",
-	username:  "meshdev",
-	password:  "large4cats",
-	topicRoot: "msh", //TODO: this will need to change
+type ConnectionLostHandler func(error)
 
+type OnConnectHandler func()
+
+type ReconnectHandler func()
+
+var DefaultClient = Client{
+	server:          "tcp://mqtt.meshtastic.org:1883",
+	username:        "meshdev",
+	password:        "large4cats",
+	topicRoot:       "msh", //TODO: this will need to change
+	log:             slog.Default(),
 	channelHandlers: make(map[string][]HandlerFunc),
 }
 
@@ -39,6 +51,7 @@ func NewClient(url, username, password, rootTopic string) *Client {
 		username:        username,
 		password:        password,
 		topicRoot:       rootTopic,
+		log:             slog.Default(),
 		channelHandlers: make(map[string][]HandlerFunc),
 	}
 }
@@ -51,8 +64,13 @@ func (c *Client) Connect() error {
 	var alphabet = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 	c.clientID = randomString(23, alphabet)
 
-	mqtt.DEBUG = log.StandardLog(log.StandardLogOptions{ForceLevel: log.DebugLevel})
-	mqtt.ERROR = log.StandardLog(log.StandardLogOptions{ForceLevel: log.ErrorLevel})
+	handler := c.log.Handler()
+
+	mqtt.DEBUG = slog.NewLogLogger(handler, slog.LevelDebug)
+	mqtt.WARN = slog.NewLogLogger(handler, slog.LevelWarn)
+	mqtt.ERROR = slog.NewLogLogger(handler, slog.LevelError)
+	mqtt.CRITICAL = slog.NewLogLogger(handler, slog.LevelError+4)
+
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.server).
 		SetUsername(c.username).
@@ -66,20 +84,24 @@ func (c *Client) Connect() error {
 	opts.SetPingTimeout(5 * time.Second)
 	opts.SetAutoReconnect(true)
 	opts.SetMaxReconnectInterval(1 * time.Minute)
-	opts.SetConnectionLostHandler(func(c mqtt.Client, err error) {
-		log.Error("mqtt connection lost", "err", err)
-	})
-	opts.SetReconnectingHandler(func(c mqtt.Client, options *mqtt.ClientOptions) {
-		log.Info("mqtt reconnecting")
-	})
-	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		log.Info("connected to", "server", c.server)
-	})
+	opts.SetConnectionLostHandler(c.onConnectionLost)
+	opts.SetReconnectingHandler(c.onReconnecting)
+	opts.SetOnConnectHandler(c.onConnected)
 	c.client = mqtt.NewClient(opts)
 	if token := c.client.Connect(); token.Wait() && token.Error() != nil {
 		return token.Error()
 	}
 	return nil
+}
+
+func (c *Client) Disconnect() {
+	if c.client != nil {
+		c.client.Disconnect(1000)
+	}
+}
+
+func (c *Client) IsConnected() bool {
+	return c.client != nil && c.client.IsConnected()
 }
 
 // MQTT Message
@@ -134,9 +156,59 @@ func (c *Client) handleBrokerMessage(client mqtt.Client, message mqtt.Message) {
 	channel := c.GetChannelFromTopic(msg.Topic)
 	chans := c.channelHandlers[channel]
 	if len(chans) == 0 {
-		log.Error("no handlers found", "topic", channel)
+		slog.Error("no handlers found", "topic", channel)
 	}
 	for _, ch := range chans {
 		go ch(msg)
+	}
+}
+
+func (c *Client) SetLogger(logger *slog.Logger) {
+	if logger == nil {
+		c.log = slog.Default()
+	} else {
+		c.log = logger
+	}
+}
+
+// SetOnConnectHandler sets the function to be called when the client is connected. Both
+// at initial connection time and upon automatic reconnect.
+func (o *Client) SetOnConnectHandler(onConn OnConnectHandler) {
+	o.OnConnect = onConn
+}
+
+// SetConnectionLostHandler will set the OnConnectionLost callback to be executed
+// in the case where the client unexpectedly loses connection with the MQTT broker.
+func (o *Client) SetConnectionLostHandler(onLost ConnectionLostHandler) {
+	o.OnConnectionLost = onLost
+}
+
+// SetReconnectingHandler sets the OnReconnecting callback to be executed prior
+// to the client attempting a reconnect to the MQTT broker.
+func (o *Client) SetReconnectingHandler(cb ReconnectHandler) {
+	o.OnReconnecting = cb
+}
+
+func (c *Client) onConnectionLost(client mqtt.Client, err error) {
+	if c.OnConnectionLost != nil {
+		c.OnConnectionLost(err)
+	} else {
+		c.log.Error("mqtt connection lost", "err", err)
+	}
+}
+
+func (c *Client) onReconnecting(client mqtt.Client, options *mqtt.ClientOptions) {
+	if c.OnReconnecting != nil {
+		c.OnReconnecting()
+	} else {
+		c.log.Info("mqtt reconnecting")
+	}
+}
+
+func (c *Client) onConnected(client mqtt.Client) {
+	if c.OnConnect != nil {
+		c.OnConnect()
+	} else {
+		c.log.Info("connected to", "server", c.server)
 	}
 }
