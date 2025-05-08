@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+
 	generated "github.com/meshnet-gophers/meshtastic-go/meshtastic"
+	"golang.org/x/crypto/curve25519"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -121,7 +123,19 @@ func TryDecode(packet *generated.MeshPacket, key []byte) (*generated.Data, error
 			}
 
 		*/
-		decrypted, err := XOR(packet.GetEncrypted(), key, packet.Id, packet.From)
+		var err error
+		var decrypted []byte
+		if !packet.PkiEncrypted {
+			decrypted, err = XOR(packet.GetEncrypted(), key, packet.Id, packet.From)
+		} else {
+			shared, err1 := curve25519.X25519(key, packet.PublicKey)
+			if err1 != nil {
+				return nil, errors.New("could not create shared key")
+			}
+			encData := packet.GetEncrypted()
+			decrypted, err = DecryptCurve25519(encData, shared, packet.Id, packet.From)
+		}
+
 		if err != nil {
 			//log.Error("failed decrypting packet", "error", err)
 			return nil, ErrDecrypt
