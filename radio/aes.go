@@ -3,14 +3,20 @@ package radio
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdh"
+	cryptoRand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/rand/v2"
+	mathRand "math/rand/v2"
 
 	"github.com/pion/dtls/v3/pkg/crypto/ccm"
 	"golang.org/x/crypto/curve25519"
+)
+
+const (
+	MeshtasticPKCOverhead = 12
 )
 
 // CreateNonce creates a 128-bit nonce.
@@ -59,6 +65,14 @@ func XOR(text []byte, key []byte, packetID, fromNode uint32) ([]byte, error) {
 	return plaintext, nil
 }
 
+func GenerateKeyPair() (publicKey, privateKey []byte, err error) {
+	priv, err := ecdh.X25519().GenerateKey(cryptoRand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	return priv.PublicKey().Bytes(), priv.Bytes(), nil
+}
+
 // Performs AES-CCM encryption with the specified ECDH shared key. It requires the packetID and sending node ID for the AES IV
 func EncryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode uint32) ([]byte, error) {
 	if len(privateKey) != 32 || len(publicKey) != 32 {
@@ -75,8 +89,10 @@ func EncryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode ui
 	if err != nil {
 		return nil, err
 	}
-
-	extraNonce := rand.Uint32()
+	// This doesn't need to be cryptographically secure, so we'll just use a
+	// psuedo-random number to prevent us from exhausting our entropy source
+	// Must be non-negative to prevent issues
+	extraNonce := uint32(mathRand.Int32())
 	iv := CreateNonce(packetID, fromNode, extraNonce)
 
 	ccmBlock, err := ccm.NewCCM(block, 8, 13)

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 
 	generated "github.com/meshnet-gophers/meshtastic-go/meshtastic"
 	"google.golang.org/protobuf/proto"
@@ -37,9 +38,12 @@ type Something struct {
 // as base64: 1PG7OiApB1nwvP+rz05pAQ==
 var DefaultKey = []byte{0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59, 0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01}
 
-// ParseKey converts the most common representation of a channel encryption key (URL encoded base64) to a byte slice
+// ParseKey converts a base64 encoded channel encryption key to a byte slice
 func ParseKey(key string) ([]byte, error) {
-	return base64.URLEncoding.DecodeString(key)
+	if strings.ContainsAny(key, "-_") {
+		return base64.URLEncoding.DecodeString(key)
+	}
+	return base64.StdEncoding.DecodeString(key)
 }
 
 func NewThing() *Something {
@@ -104,6 +108,18 @@ func ChannelHash(channelName string, channelKey []byte) (uint32, error) {
 	h ^= xorHash(channelKey)
 
 	return uint32(h), nil
+}
+
+// Attempts to decrypt the packet with the specified public key and private key.
+// The public key should be the sending node's key and the private key should be
+// the receiving node's private key
+func TryDecodePKI(packet *generated.MeshPacket, publicKey, privateKey []byte) (*generated.Data, error) {
+	if x, ok := packet.GetPayloadVariant().(*generated.MeshPacket_Encrypted); ok &&
+		packet.Channel == 0 && packet.To > 0 && len(x.Encrypted) > MeshtasticPKCOverhead {
+		packet.PkiEncrypted = true
+		packet.PublicKey = publicKey
+	}
+	return TryDecode(packet, privateKey)
 }
 
 // Attempts to decrypt a packet with the specified key, or return the already decrypted data if present.
