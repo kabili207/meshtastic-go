@@ -5,10 +5,12 @@ import (
 	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 
 	"github.com/pion/dtls/v3/pkg/crypto/ccm"
+	"golang.org/x/crypto/curve25519"
 )
 
 // CreateNonce creates a 128-bit nonce.
@@ -58,9 +60,14 @@ func XOR(text []byte, key []byte, packetID, fromNode uint32) ([]byte, error) {
 }
 
 // Performs AES-CCM encryption with the specified ECDH shared key. It requires the packetID and sending node ID for the AES IV
-func EncryptCurve25519(text []byte, key []byte, packetID, fromNode uint32) ([]byte, error) {
-	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
-		return nil, fmt.Errorf("key length must be 16, 24, or 32 bytes")
+func EncryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode uint32) ([]byte, error) {
+	if len(privateKey) != 32 || len(publicKey) != 32 {
+		return nil, fmt.Errorf("key length must be 32 bytes")
+	}
+
+	key, err := curve25519.X25519(privateKey, publicKey)
+	if err != nil {
+		return nil, errors.New("could not create shared key")
 	}
 
 	sharedKey := sha256.Sum256(key[:])
@@ -87,9 +94,14 @@ func EncryptCurve25519(text []byte, key []byte, packetID, fromNode uint32) ([]by
 }
 
 // Performs AES-CCM decryption with the specified ECDH shared key. It requires the packetID and sending node ID for the AES IV
-func DecryptCurve25519(text []byte, key []byte, packetID, fromNode uint32) ([]byte, error) {
-	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
-		return nil, fmt.Errorf("key length must be 16, 24, or 32 bytes")
+func DecryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode uint32) ([]byte, error) {
+	if len(privateKey) != 32 || len(publicKey) != 32 {
+		return nil, fmt.Errorf("key length must be 32 bytes")
+	}
+
+	key, err := curve25519.X25519(privateKey, publicKey)
+	if err != nil {
+		return nil, errors.New("could not create shared key")
 	}
 
 	sharedKey := sha256.Sum256(key[:])

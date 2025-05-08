@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	generated "github.com/meshnet-gophers/meshtastic-go/meshtastic"
-	"golang.org/x/crypto/curve25519"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -128,12 +127,7 @@ func TryDecode(packet *generated.MeshPacket, key []byte) (*generated.Data, error
 		if !packet.PkiEncrypted {
 			decrypted, err = XOR(packet.GetEncrypted(), key, packet.Id, packet.From)
 		} else {
-			shared, err1 := curve25519.X25519(key, packet.PublicKey)
-			if err1 != nil {
-				return nil, errors.New("could not create shared key")
-			}
-			encData := packet.GetEncrypted()
-			decrypted, err = DecryptCurve25519(encData, shared, packet.Id, packet.From)
+			decrypted, err = DecryptCurve25519(packet.GetEncrypted(), key, packet.PublicKey, packet.Id, packet.From)
 		}
 
 		if err != nil {
