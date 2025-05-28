@@ -454,6 +454,16 @@ func (m *LocalStats) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.HeapFreeBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HeapFreeBytes))
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.HeapTotalBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HeapTotalBytes))
+		i--
+		dAtA[i] = 0x60
+	}
 	if m.NumTxRelayCanceled != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumTxRelayCanceled))
 		i--
@@ -557,6 +567,86 @@ func (m *HealthMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	if m.HeartBpm != nil {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.HeartBpm))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *HostMetrics) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *HostMetrics) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *HostMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.UserString != nil {
+		i -= len(*m.UserString)
+		copy(dAtA[i:], *m.UserString)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.UserString)))
+		i--
+		dAtA[i] = 0x4a
+	}
+	if m.Load15 != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Load15))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.Load5 != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Load5))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Load1 != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Load1))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Diskfree3Bytes != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Diskfree3Bytes))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.Diskfree2Bytes != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Diskfree2Bytes))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Diskfree1Bytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Diskfree1Bytes))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.FreememBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FreememBytes))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.UptimeSeconds != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.UptimeSeconds))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -722,6 +812,25 @@ func (m *Telemetry_HealthMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Telemetry_HostMetrics) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Telemetry_HostMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.HostMetrics != nil {
+		size, err := m.HostMetrics.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -986,6 +1095,12 @@ func (m *LocalStats) SizeVT() (n int) {
 	if m.NumTxRelayCanceled != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumTxRelayCanceled))
 	}
+	if m.HeapTotalBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.HeapTotalBytes))
+	}
+	if m.HeapFreeBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.HeapFreeBytes))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1004,6 +1119,44 @@ func (m *HealthMetrics) SizeVT() (n int) {
 	}
 	if m.Temperature != nil {
 		n += 5
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *HostMetrics) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UptimeSeconds != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.UptimeSeconds))
+	}
+	if m.FreememBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FreememBytes))
+	}
+	if m.Diskfree1Bytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Diskfree1Bytes))
+	}
+	if m.Diskfree2Bytes != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Diskfree2Bytes))
+	}
+	if m.Diskfree3Bytes != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Diskfree3Bytes))
+	}
+	if m.Load1 != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Load1))
+	}
+	if m.Load5 != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Load5))
+	}
+	if m.Load15 != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Load15))
+	}
+	if m.UserString != nil {
+		l = len(*m.UserString)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1093,6 +1246,18 @@ func (m *Telemetry_HealthMetrics) SizeVT() (n int) {
 	_ = l
 	if m.HealthMetrics != nil {
 		l = m.HealthMetrics.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Telemetry_HostMetrics) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HostMetrics != nil {
+		l = m.HostMetrics.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -2235,6 +2400,44 @@ func (m *LocalStats) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HeapTotalBytes", wireType)
+			}
+			m.HeapTotalBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HeapTotalBytes |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HeapFreeBytes", wireType)
+			}
+			m.HeapFreeBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HeapFreeBytes |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -2338,6 +2541,244 @@ func (m *HealthMetrics) UnmarshalVT(dAtA []byte) error {
 			iNdEx += 4
 			v2 := float32(math.Float32frombits(v))
 			m.Temperature = &v2
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *HostMetrics) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: HostMetrics: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: HostMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UptimeSeconds", wireType)
+			}
+			m.UptimeSeconds = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UptimeSeconds |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FreememBytes", wireType)
+			}
+			m.FreememBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FreememBytes |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Diskfree1Bytes", wireType)
+			}
+			m.Diskfree1Bytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Diskfree1Bytes |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Diskfree2Bytes", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Diskfree2Bytes = &v
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Diskfree3Bytes", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Diskfree3Bytes = &v
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Load1", wireType)
+			}
+			m.Load1 = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Load1 |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Load5", wireType)
+			}
+			m.Load5 = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Load5 |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Load15", wireType)
+			}
+			m.Load15 = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Load15 |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserString", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.UserString = &s
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -2643,6 +3084,47 @@ func (m *Telemetry) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Variant = &Telemetry_HealthMetrics{HealthMetrics: v}
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HostMetrics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Variant.(*Telemetry_HostMetrics); ok {
+				if err := oneof.HostMetrics.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &HostMetrics{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Variant = &Telemetry_HostMetrics{HostMetrics: v}
 			}
 			iNdEx = postIndex
 		default:

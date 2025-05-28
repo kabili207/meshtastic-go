@@ -11,6 +11,8 @@ import (
 )
 
 const MQTTProtoTopic = "/2/e/"
+const MQTTMapTopic = "/2/map/"
+const MQTTPrivateTopic = MQTTProtoTopic + "PKI/"
 
 type Client struct {
 	server    string
@@ -22,6 +24,7 @@ type Client struct {
 	log       *slog.Logger
 	sync.RWMutex
 	channelHandlers map[string][]HandlerFunc
+	mapHandlers     []HandlerFunc
 
 	OnConnect        OnConnectHandler
 	OnConnectionLost ConnectionLostHandler
@@ -43,6 +46,7 @@ var DefaultClient = Client{
 	topicRoot:       "msh", //TODO: this will need to change
 	log:             slog.Default(),
 	channelHandlers: make(map[string][]HandlerFunc),
+	mapHandlers:     []HandlerFunc{},
 }
 
 func NewClient(url, username, password, rootTopic string) *Client {
@@ -53,6 +57,7 @@ func NewClient(url, username, password, rootTopic string) *Client {
 		topicRoot:       rootTopic,
 		log:             slog.Default(),
 		channelHandlers: make(map[string][]HandlerFunc),
+		mapHandlers:     []HandlerFunc{},
 	}
 }
 
@@ -133,6 +138,15 @@ func (c *Client) Handle(channel string, h HandlerFunc) {
 	c.client.Subscribe(topic+"/+", 0, c.handleBrokerMessage)
 }
 
+// Register a handler for messages on the specified channel
+func (c *Client) HandleMap(h HandlerFunc) {
+	c.Lock()
+	defer c.Unlock()
+	topic := c.topicRoot + MQTTMapTopic
+	c.mapHandlers = append(c.mapHandlers, h)
+	c.client.Subscribe(topic+"/+", 0, c.handleBrokerMessage)
+}
+
 func (c *Client) GetFullTopicForChannel(channel string) string {
 	return c.topicRoot + MQTTProtoTopic + channel
 }
@@ -153,10 +167,18 @@ func (c *Client) handleBrokerMessage(client mqtt.Client, message mqtt.Message) {
 	}
 	c.RLock()
 	defer c.RUnlock()
-	channel := c.GetChannelFromTopic(msg.Topic)
-	chans := c.channelHandlers[channel]
-	if len(chans) == 0 {
-		slog.Error("no handlers found", "topic", channel)
+	var chans []HandlerFunc
+	if strings.HasSuffix(msg.Topic, MQTTMapTopic) {
+		chans = c.mapHandlers
+		if len(chans) == 0 {
+			slog.Error("no map handlers found")
+		}
+	} else {
+		channel := c.GetChannelFromTopic(msg.Topic)
+		chans = c.channelHandlers[channel]
+		if len(chans) == 0 {
+			slog.Error("no handlers found", "topic", channel)
+		}
 	}
 	for _, ch := range chans {
 		go ch(msg)

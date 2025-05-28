@@ -111,6 +111,16 @@ func (m *UserLite) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.IsUnmessagable != nil {
+		i--
+		if *m.IsUnmessagable {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x48
+	}
 	if len(m.PublicKey) > 0 {
 		i -= len(m.PublicKey)
 		copy(dAtA[i:], m.PublicKey)
@@ -191,6 +201,11 @@ func (m *NodeInfoLite) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Bitfield != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Bitfield))
+		i--
+		dAtA[i] = 0x68
 	}
 	if m.NextHop != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextHop))
@@ -649,6 +664,9 @@ func (m *UserLite) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.IsUnmessagable != nil {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -697,6 +715,9 @@ func (m *NodeInfoLite) SizeVT() (n int) {
 	}
 	if m.NextHop != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextHop))
+	}
+	if m.Bitfield != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Bitfield))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1157,6 +1178,27 @@ func (m *UserLite) UnmarshalVT(dAtA []byte) error {
 				m.PublicKey = []byte{}
 			}
 			iNdEx = postIndex
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IsUnmessagable", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			b := bool(v != 0)
+			m.IsUnmessagable = &b
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1470,6 +1512,25 @@ func (m *NodeInfoLite) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.NextHop |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Bitfield", wireType)
+			}
+			m.Bitfield = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Bitfield |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

@@ -106,6 +106,16 @@ func (m *MapReport) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.HasOptedReportLocation {
+		i--
+		if m.HasOptedReportLocation {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x70
+	}
 	if m.NumOnlineLocalNodes != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumOnlineLocalNodes))
 		i--
@@ -256,6 +266,9 @@ func (m *MapReport) SizeVT() (n int) {
 	}
 	if m.NumOnlineLocalNodes != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumOnlineLocalNodes))
+	}
+	if m.HasOptedReportLocation {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -710,6 +723,26 @@ func (m *MapReport) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasOptedReportLocation", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.HasOptedReportLocation = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
