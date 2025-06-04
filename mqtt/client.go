@@ -144,7 +144,7 @@ func (c *Client) HandleMap(h HandlerFunc) {
 	defer c.Unlock()
 	topic := c.topicRoot + MQTTMapTopic
 	c.mapHandlers = append(c.mapHandlers, h)
-	c.client.Subscribe(topic+"/+", 0, c.handleBrokerMessage)
+	c.client.Subscribe(topic, 0, c.handleBrokerMessage)
 }
 
 func (c *Client) GetFullTopicForChannel(channel string) string {
