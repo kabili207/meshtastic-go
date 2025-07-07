@@ -69,12 +69,10 @@ func (c *Client) Connect() error {
 	var alphabet = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 	c.clientID = randomString(23, alphabet)
 
-	handler := c.log.Handler()
-
-	mqtt.DEBUG = slog.NewLogLogger(handler, slog.LevelDebug)
-	mqtt.WARN = slog.NewLogLogger(handler, slog.LevelWarn)
-	mqtt.ERROR = slog.NewLogLogger(handler, slog.LevelError)
-	mqtt.CRITICAL = slog.NewLogLogger(handler, slog.LevelError+4)
+	mqtt.DEBUG = NewMQTTLogger(c.log, slog.LevelDebug)
+	mqtt.WARN = NewMQTTLogger(c.log, slog.LevelWarn)
+	mqtt.ERROR = NewMQTTLogger(c.log, slog.LevelError)
+	mqtt.CRITICAL = NewMQTTLogger(c.log, slog.LevelError+4)
 
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.server).
@@ -171,13 +169,13 @@ func (c *Client) handleBrokerMessage(client mqtt.Client, message mqtt.Message) {
 	if strings.HasSuffix(msg.Topic, MQTTMapTopic) {
 		chans = c.mapHandlers
 		if len(chans) == 0 {
-			slog.Error("no map handlers found")
+			c.log.Error("no map handlers found")
 		}
 	} else {
 		channel := c.GetChannelFromTopic(msg.Topic)
 		chans = c.channelHandlers[channel]
 		if len(chans) == 0 {
-			slog.Error("no handlers found", "topic", channel)
+			c.log.Error("no handlers found", "topic", channel)
 		}
 	}
 	for _, ch := range chans {
