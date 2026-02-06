@@ -19,11 +19,79 @@ var ErrDecrypt = errors.New("unable to decrypt payload")
 
 // ParseKey converts a base64 encoded channel encryption key to a byte slice.
 // Supports both standard and URL-safe base64 encoding.
+// Short PSKs (1 byte when decoded) are automatically expanded to full 16-byte keys.
 func ParseKey(key string) ([]byte, error) {
+	var decoded []byte
+	var err error
 	if strings.ContainsAny(key, "-_") {
-		return base64.URLEncoding.DecodeString(key)
+		decoded, err = base64.URLEncoding.DecodeString(key)
+	} else {
+		decoded, err = base64.StdEncoding.DecodeString(key)
 	}
-	return base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expand short PSKs to full keys
+	return ExpandShortPSK(decoded), nil
+}
+
+// ExpandShortPSK expands a 1-byte "simple" PSK to a full 16-byte key.
+// Meshtastic supports short PSKs for convenience - a single byte (0-255) that
+// gets expanded to a full AES key by repeating a specific pattern.
+//
+// If the input is already 16+ bytes, it's returned unchanged.
+// If the input is empty, DefaultKey is returned.
+func ExpandShortPSK(input []byte) []byte {
+	if len(input) == 0 {
+		return DefaultKey
+	}
+	if len(input) >= 16 {
+		return input
+	}
+
+	// For 1-byte PSKs, expand using the simple PSK pattern
+	// The pattern fills bytes 0-14 with a rotating value based on the input byte
+	if len(input) == 1 {
+		expanded := make([]byte, 16)
+		pskByte := input[0]
+
+		// Pattern from Meshtastic firmware: simple PSK expansion
+		// Byte 0 = pskByte, then incrementing pattern
+		for i := 0; i < 16; i++ {
+			expanded[i] = pskByte + byte(i)
+		}
+		return expanded
+	}
+
+	// For 2-15 byte inputs, pad with zeros to 16 bytes
+	expanded := make([]byte, 16)
+	copy(expanded, input)
+	return expanded
+}
+
+// TryCompactKey attempts to compact a full key back to its short form if possible.
+// Returns the original key if it can't be compacted.
+func TryCompactKey(key []byte) []byte {
+	if len(key) != 16 {
+		return key
+	}
+
+	// Check if this matches the expanded pattern for a 1-byte PSK
+	firstByte := key[0]
+	isSimplePSK := true
+	for i := 1; i < 16; i++ {
+		if key[i] != firstByte+byte(i) {
+			isSimplePSK = false
+			break
+		}
+	}
+
+	if isSimplePSK {
+		return []byte{firstByte}
+	}
+
+	return key
 }
 
 // xorHash computes a simple XOR hash of the provided byte slice.
