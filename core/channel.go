@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 
 	"github.com/kabili207/meshtastic-go/core/crypto"
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 )
 
 // ChannelDef defines a common interface for channel definitions from various sources.

@@ -4,7 +4,7 @@
 // 	protoc        v6.31.1
 // source: meshtastic/localonly.proto
 
-package generated
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

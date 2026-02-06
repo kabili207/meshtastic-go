@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"google.golang.org/protobuf/proto"
 )
 

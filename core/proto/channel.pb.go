@@ -6,7 +6,7 @@
 
 // trunk-ignore(buf-lint/PACKAGE_DIRECTORY_MATCH)
 
-package generated
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

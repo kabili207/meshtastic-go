@@ -2,7 +2,7 @@
 package raw
 
 import (
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/transport"
 )
 

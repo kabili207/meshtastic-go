@@ -39,7 +39,7 @@ Transport implementations for connecting to devices and mesh networks:
 ### Core only (protobufs + crypto)
 ```go
 import (
-    pb "github.com/kabili207/meshtastic-go/core/generated"
+    pb "github.com/kabili207/meshtastic-go/core/proto"
     "github.com/kabili207/meshtastic-go/core/crypto"
 )
 
@@ -51,7 +51,7 @@ data, err := crypto.TryDecode(packet, key)
 ```go
 import (
     "context"
-    pb "github.com/kabili207/meshtastic-go/core/generated"
+    pb "github.com/kabili207/meshtastic-go/core/proto"
     "github.com/kabili207/meshtastic-go/transport/serial"
 )
 

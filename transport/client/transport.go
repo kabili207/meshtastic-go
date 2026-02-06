@@ -9,7 +9,7 @@ import (
 	"math/rand"
 	"sync"
 
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/transport"
 	"github.com/kabili207/meshtastic-go/transport/stream"
 	"google.golang.org/protobuf/proto"

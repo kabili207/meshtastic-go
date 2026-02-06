@@ -5,7 +5,7 @@ package transport
 import (
 	"context"
 
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 )
 
 // Transport is the base interface for all transport implementations.

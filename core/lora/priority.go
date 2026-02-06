@@ -1,7 +1,7 @@
 package lora
 
 import (
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 )
 
 // GetPriority determines the appropriate packet priority based on the data portnum and ack requirements.

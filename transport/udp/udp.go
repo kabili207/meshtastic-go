@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/kabili207/meshtastic-go/core/generated"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/transport"
 	"google.golang.org/protobuf/proto"
 )
