@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,47 @@ import (
 	"github.com/kabili207/meshtastic-go/transport"
 	"google.golang.org/protobuf/proto"
 )
+
+// pahoLogger adapts slog to paho's Logger interface.
+type pahoLogger struct {
+	logger  *slog.Logger
+	level   slog.Level
+	pattern *regexp.Regexp
+}
+
+// newPahoLogger creates a paho.Logger that writes to slog at the specified level.
+func newPahoLogger(logger *slog.Logger, level slog.Level) paho.Logger {
+	return &pahoLogger{
+		logger:  logger,
+		level:   level,
+		pattern: regexp.MustCompile(`^\[([A-Za-z]+)\]\s+(.+?)$`),
+	}
+}
+
+func (l *pahoLogger) Println(v ...any) {
+	l.doLog(fmt.Sprintln(v...))
+}
+
+func (l *pahoLogger) Printf(format string, v ...any) {
+	l.doLog(fmt.Sprintf(format, v...))
+}
+
+func (l *pahoLogger) doLog(s string) {
+	s = strings.TrimSpace(s)
+	if mod, msg := l.extractModule(s); mod != "" {
+		l.logger.Log(context.Background(), l.level, msg, "paho_module", mod)
+	} else {
+		l.logger.Log(context.Background(), l.level, s)
+	}
+}
+
+// extractModule parses paho's log format "[Module] message" into separate parts.
+func (l *pahoLogger) extractModule(s string) (module string, message string) {
+	if m := l.pattern.FindStringSubmatch(s); m != nil {
+		return m[1], m[2]
+	}
+	return "", s
+}
 
 const (
 	// ProtoTopic is the topic suffix for protobuf mesh packets.
@@ -80,9 +122,19 @@ func New(cfg Config) *Transport {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+
+	mqttLogger := cfg.Logger.WithGroup("mqtt")
+
+	// Redirect paho's internal logging to slog
+	pahoLogger := mqttLogger.WithGroup("paho")
+	paho.ERROR = newPahoLogger(pahoLogger, slog.LevelError)
+	paho.CRITICAL = newPahoLogger(pahoLogger, slog.LevelError)
+	paho.WARN = newPahoLogger(pahoLogger, slog.LevelWarn)
+	paho.DEBUG = newPahoLogger(pahoLogger, slog.LevelDebug)
+
 	return &Transport{
 		cfg:      cfg,
-		log:      cfg.Logger.WithGroup("mqtt"),
+		log:      mqttLogger,
 		channels: make(map[string]struct{}),
 	}
 }

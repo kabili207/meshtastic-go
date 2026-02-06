@@ -1,8 +1,6 @@
 package serial
 
 import (
-	"log/slog"
-
 	"go.bug.st/serial/enumerator"
 )
 
@@ -24,11 +22,21 @@ var knownDevices = []usbDevice{
 }
 
 // GetPorts returns a list of serial ports that match known Meshtastic device VID/PIDs.
+// Returns an empty slice if enumeration fails.
 func GetPorts() []string {
+	ports, err := GetPortsWithError()
+	if err != nil {
+		return nil
+	}
+	return ports
+}
+
+// GetPortsWithError returns a list of serial ports that match known Meshtastic device VID/PIDs.
+// Unlike GetPorts, this returns the error if enumeration fails.
+func GetPortsWithError() ([]string, error) {
 	ports, err := enumerator.GetDetailedPortsList()
 	if err != nil {
-		slog.Error("failed to enumerate serial ports", "error", err)
-		return nil
+		return nil, err
 	}
 
 	var foundDevices []string
@@ -42,7 +50,7 @@ func GetPorts() []string {
 			}
 		}
 	}
-	return foundDevices
+	return foundDevices, nil
 }
 
 // GetAllPorts returns all serial ports, not filtered by known devices.
