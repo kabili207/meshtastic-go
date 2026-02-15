@@ -38,7 +38,13 @@ func ParseKey(key string) ([]byte, error) {
 
 // ExpandShortPSK expands a 1-byte "simple" PSK to a full 16-byte key.
 // Meshtastic supports short PSKs for convenience - a single byte (0-255) that
-// gets expanded to a full AES key by repeating a specific pattern.
+// indexes into a family of keys derived from DefaultKey.
+//
+// The expansion follows the Meshtastic firmware (Channels.cpp getKey):
+//   - Index 0: no encryption (returns nil-length key)
+//   - Index 1-255: copy DefaultKey, then add (index-1) to the last byte
+//
+// This means index 1 (AQ==) produces the unmodified DefaultKey.
 //
 // If the input is already 16+ bytes, it's returned unchanged.
 // If the input is empty, DefaultKey is returned.
@@ -50,17 +56,15 @@ func ExpandShortPSK(input []byte) []byte {
 		return input
 	}
 
-	// For 1-byte PSKs, expand using the simple PSK pattern
-	// The pattern fills bytes 0-14 with a rotating value based on the input byte
+	// For 1-byte PSKs, derive from DefaultKey per firmware behavior
 	if len(input) == 1 {
-		expanded := make([]byte, 16)
-		pskByte := input[0]
-
-		// Pattern from Meshtastic firmware: simple PSK expansion
-		// Byte 0 = pskByte, then incrementing pattern
-		for i := 0; i < 16; i++ {
-			expanded[i] = pskByte + byte(i)
+		index := input[0]
+		if index == 0 {
+			return make([]byte, 0) // No encryption
 		}
+		expanded := make([]byte, len(DefaultKey))
+		copy(expanded, DefaultKey)
+		expanded[len(expanded)-1] += index - 1
 		return expanded
 	}
 
@@ -73,25 +77,23 @@ func ExpandShortPSK(input []byte) []byte {
 // TryCompactKey attempts to compact a full key back to its short form if possible.
 // Returns the original key if it can't be compacted.
 func TryCompactKey(key []byte) []byte {
-	if len(key) != 16 {
+	if len(key) != len(DefaultKey) {
 		return key
 	}
 
-	// Check if this matches the expanded pattern for a 1-byte PSK
-	firstByte := key[0]
-	isSimplePSK := true
-	for i := 1; i < 16; i++ {
-		if key[i] != firstByte+byte(i) {
-			isSimplePSK = false
-			break
+	// Check if the first 15 bytes match DefaultKey
+	for i := 0; i < len(DefaultKey)-1; i++ {
+		if key[i] != DefaultKey[i] {
+			return key
 		}
 	}
 
-	if isSimplePSK {
-		return []byte{firstByte}
-	}
+	// Last byte encodes the PSK index: index = lastByte - DefaultKey[last] + 1
+	lastIdx := len(DefaultKey) - 1
+	diff := key[lastIdx] - DefaultKey[lastIdx]
+	index := diff + 1
 
-	return key
+	return []byte{index}
 }
 
 // xorHash computes a simple XOR hash of the provided byte slice.
@@ -115,26 +117,31 @@ func ChannelHash(channelName string, channelKey []byte) (uint32, error) {
 	return uint32(h), nil
 }
 
-// GenerateWeakKeys creates a bunch of weak keys for use when interfacing on MQTT.
-// This creates 128, 192, and 256 bit AES keys with only a single byte specified.
+// GenerateWeakKeys creates weak keys derived from DefaultKey for brute-force
+// decryption of MQTT traffic using simple PSKs.
+// For 16-byte keys, this produces the same keys as ExpandShortPSK for indices 0-255.
+// Additionally generates 24-byte and 32-byte variants (zero-padded copies of DefaultKey
+// with the last byte varied) for 192-bit and 256-bit AES.
 func GenerateWeakKeys() [][]byte {
-	// There are 256 possible values for a single byte
-	// We create 768 slices: 256 with 16 bytes, 256 with 24 bytes, and 256 with 32 bytes
 	allSlices := make([][]byte, 256*3)
 
 	for i := 0; i < 256; i++ {
-		// Create a slice of 16 bytes for the first 256 slices
+		// 16-byte keys: copy DefaultKey and set last byte
+		// Index 0 gets DefaultKey with last byte = 0, matching no-offset expansion
 		slice16 := make([]byte, 16)
-		slice16[15] = byte(i)
+		copy(slice16, DefaultKey)
+		slice16[15] = DefaultKey[15] + byte(i) - 1
 		allSlices[i] = slice16
 
-		// Create a slice of 24 bytes (192 bits) for the next 256 slices
+		// 24-byte keys: DefaultKey zero-padded to 24 bytes, last byte varied
 		slice24 := make([]byte, 24)
+		copy(slice24, DefaultKey)
 		slice24[23] = byte(i)
 		allSlices[i+256] = slice24
 
-		// Create a slice of 32 bytes for the last 256 slices
+		// 32-byte keys: DefaultKey zero-padded to 32 bytes, last byte varied
 		slice32 := make([]byte, 32)
+		copy(slice32, DefaultKey)
 		slice32[31] = byte(i)
 		allSlices[i+512] = slice32
 	}
