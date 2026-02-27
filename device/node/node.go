@@ -69,6 +69,11 @@ type Config struct {
 	// The maximum usable value is 7.
 	DefaultHopLimit uint32
 
+	// OkToMQTT sets the "OK to MQTT" bitfield flag on all outbound Data
+	// packets. When true, MQTT gateways on the mesh are permitted to
+	// upload these packets.
+	OkToMQTT bool
+
 	// EventHandlers are called for decoded mesh events. Optional.
 	EventHandlers []event.Handler
 
@@ -166,22 +171,13 @@ func New(cfg Config) (*Node, error) {
 		Logger:    cfg.Logger,
 	})
 
-	// Create broadcast scheduler — closure wraps sendPacket with empty channel (primary)
+	// Create broadcast scheduler — Node methods handle packet construction
 	n.scheduler = broadcast.New(broadcast.Config{
-		NodeID:             cfg.NodeID,
-		LongName:           cfg.LongName,
-		ShortName:          cfg.ShortName,
-		HwModel:            cfg.HwModel,
-		PublicKey:           cfg.PublicKey,
-		NodeInfoInterval:   cfg.BroadcastNodeInfoInterval,
-		PositionInterval:   cfg.BroadcastPositionInterval,
-		PositionLatitudeI:  cfg.PositionLatitudeI,
-		PositionLongitudeI: cfg.PositionLongitudeI,
-		PositionAltitude:   cfg.PositionAltitude,
-		Send: func(ctx context.Context, pkt *pb.MeshPacket) error {
-			return n.sendPacket(ctx, pkt, "")
-		},
-		Logger: cfg.Logger,
+		NodeInfoInterval: cfg.BroadcastNodeInfoInterval,
+		NodeInfoFunc:     n.broadcastNodeInfo,
+		PositionInterval: cfg.BroadcastPositionInterval,
+		PositionFunc:     n.broadcastPosition,
+		Logger:           cfg.Logger,
 	})
 
 	// Create client API server — resolve channel name from hash for outbound packets
@@ -289,6 +285,14 @@ func (n *Node) sendPacket(_ context.Context, packet *pb.MeshPacket, channelName 
 
 	n.applyPacketDefaults(packet)
 
+	// Set OK-to-MQTT bitfield flag on outbound Data payloads.
+	if n.cfg.OkToMQTT {
+		if decoded := packet.GetDecoded(); decoded != nil {
+			bf := decoded.GetBitfield() | 1 // bit 0 = OK to MQTT
+			decoded.Bitfield = &bf
+		}
+	}
+
 	// PSK-encrypt decoded payloads so other nodes can receive them.
 	if decoded := packet.GetDecoded(); decoded != nil && ch != nil {
 		if err := n.encryptDecoded(packet, decoded, ch.GetKeyBytes()); err != nil {
@@ -326,6 +330,89 @@ func (n *Node) encryptDecoded(pkt *pb.MeshPacket, data *pb.Data, key []byte) err
 		Encrypted: encrypted,
 	}
 	return nil
+}
+
+// buildNodeInfoData returns a marshalled NodeInfo payload. This is the single
+// source of truth for NodeInfo construction — used by both periodic broadcasts
+// and WantResponse replies. Pass requestID=0 for unsolicited broadcasts.
+func (n *Node) buildNodeInfoData(requestID uint32) *pb.Data {
+	user := &pb.User{
+		Id:        n.cfg.NodeID.String(),
+		LongName:  n.cfg.LongName,
+		ShortName: n.cfg.ShortName,
+		HwModel:   n.cfg.HwModel,
+		PublicKey: n.cfg.PublicKey,
+	}
+	userBytes, err := proto.Marshal(user)
+	if err != nil {
+		n.log.Error("failed to marshal NodeInfo", "error", err)
+		return nil
+	}
+	data := &pb.Data{
+		Portnum: pb.PortNum_NODEINFO_APP,
+		Payload: userBytes,
+	}
+	if requestID != 0 {
+		data.RequestId = requestID
+	}
+	return data
+}
+
+// broadcastNodeInfo sends a NodeInfo broadcast to all nodes.
+func (n *Node) broadcastNodeInfo(ctx context.Context) error {
+	n.log.Debug("broadcasting NodeInfo")
+	data := n.buildNodeInfoData(0)
+	if data == nil {
+		return fmt.Errorf("building NodeInfo data")
+	}
+	return n.sendPacket(ctx, &pb.MeshPacket{
+		From:           n.cfg.NodeID.Uint32(),
+		To:             core.BroadcastNodeID.Uint32(),
+		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
+	}, "")
+}
+
+// broadcastPosition sends a Position broadcast to all nodes.
+func (n *Node) broadcastPosition(ctx context.Context) error {
+	n.log.Debug("broadcasting Position")
+	pos := &pb.Position{
+		LatitudeI:  &n.cfg.PositionLatitudeI,
+		LongitudeI: &n.cfg.PositionLongitudeI,
+		Altitude:   &n.cfg.PositionAltitude,
+		Time:       uint32(time.Now().Unix()),
+	}
+	posBytes, err := proto.Marshal(pos)
+	if err != nil {
+		return fmt.Errorf("marshalling position: %w", err)
+	}
+	return n.sendPacket(ctx, &pb.MeshPacket{
+		From: n.cfg.NodeID.Uint32(),
+		To:   core.BroadcastNodeID.Uint32(),
+		PayloadVariant: &pb.MeshPacket_Decoded{
+			Decoded: &pb.Data{
+				Portnum: pb.PortNum_POSITION_APP,
+				Payload: posBytes,
+			},
+		},
+	}, "")
+}
+
+// respondNodeInfo sends our NodeInfo as a unicast response to a WantResponse request.
+func (n *Node) respondNodeInfo(to uint32, requestID uint32) {
+	data := n.buildNodeInfoData(requestID)
+	if data == nil {
+		return
+	}
+	pkt := &pb.MeshPacket{
+		From:           n.cfg.NodeID.Uint32(),
+		To:             to,
+		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
+	}
+	if err := n.sendPacket(context.Background(), pkt, ""); err != nil {
+		n.log.Error("failed to send NodeInfo response", "to", core.NodeID(to), "error", err)
+	} else {
+		n.log.Debug("sent NodeInfo response", "to", core.NodeID(to))
+	}
 }
 
 const sendDelay = 200 * time.Millisecond
@@ -433,6 +520,11 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 		}
 		n.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
 		n.emitEvent(&event.NodeInfoUpdated{Event: base, User: user})
+
+		// Respond to NodeInfo requests with our own NodeInfo
+		if data.WantResponse {
+			n.respondNodeInfo(from, pkt.Packet.Id)
+		}
 
 	case pb.PortNum_POSITION_APP:
 		pos := &pb.Position{}
