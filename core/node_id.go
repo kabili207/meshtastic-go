@@ -188,6 +188,38 @@ func (n NodeID) GetNodeColor() string {
 	return fmt.Sprintf("#%02x%02x%02x", clamp(r), clamp(g), clamp(b))
 }
 
+// ValidateLongName truncates a long name to the firmware maximum of 39 bytes.
+// If the name is already within the limit it is returned unchanged.
+func ValidateLongName(name string) string {
+	return truncateToBytes(name, MaxLongName)
+}
+
+// ValidateShortName truncates a short name to the firmware maximum of 4 bytes.
+// If the name is already within the limit it is returned unchanged.
+func ValidateShortName(name string) string {
+	return truncateToBytes(name, MaxShortName)
+}
+
+// truncateToBytes truncates a string to at most maxBytes bytes, avoiding
+// splitting multi-byte UTF-8 characters by trimming back to the last valid
+// rune boundary.
+func truncateToBytes(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	// Trim back to avoid splitting a multi-byte rune.
+	b := []byte(s[:maxBytes])
+	for len(b) > 0 && b[len(b)-1]&0xC0 == 0x80 {
+		b = b[:len(b)-1]
+	}
+	if len(b) > 0 && b[len(b)-1]&0x80 != 0 {
+		// The last byte is a leading byte of a multi-byte sequence that
+		// was truncated — remove it.
+		b = b[:len(b)-1]
+	}
+	return string(b)
+}
+
 // ToMacAddress returns a MAC address string derived from the NodeID.
 // This creates a locally administered unicast MAC address.
 func (n NodeID) ToMacAddress() string {
