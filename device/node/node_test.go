@@ -348,8 +348,8 @@ func TestEvents_PacketReceivedForUnknownPortnum(t *testing.T) {
 			From: 0xDD,
 			PayloadVariant: &pb.MeshPacket_Decoded{
 				Decoded: &pb.Data{
-					Portnum: pb.PortNum_WAYPOINT_APP,
-					Payload: []byte("waypoint data"),
+					Portnum: pb.PortNum_STORE_FORWARD_APP,
+					Payload: []byte("unknown data"),
 				},
 			},
 		},
@@ -360,8 +360,8 @@ func TestEvents_PacketReceivedForUnknownPortnum(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected PacketReceived event for unknown portnum")
 	}
-	if got.Portnum != pb.PortNum_WAYPOINT_APP {
-		t.Errorf("got portnum %v, want WAYPOINT_APP", got.Portnum)
+	if got.Portnum != pb.PortNum_STORE_FORWARD_APP {
+		t.Errorf("got portnum %v, want STORE_FORWARD_APP", got.Portnum)
 	}
 }
 
