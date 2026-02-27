@@ -95,8 +95,9 @@ func (n *Node) sendRoutingResponse(ctx context.Context, to core.NodeID, packetID
 		return fmt.Errorf("marshalling routing: %w", err)
 	}
 	pkt := &pb.MeshPacket{
-		From: n.cfg.NodeID.Uint32(),
-		To:   to.Uint32(),
+		From:     n.cfg.NodeID.Uint32(),
+		To:       to.Uint32(),
+		Priority: pb.MeshPacket_ACK,
 		PayloadVariant: &pb.MeshPacket_Decoded{
 			Decoded: &pb.Data{
 				Portnum:   pb.PortNum_ROUTING_APP,
@@ -157,8 +158,9 @@ func (n *Node) SendNeighborInfo(ctx context.Context, neighbors []*pb.Neighbor) e
 		return fmt.Errorf("marshalling neighbor info: %w", err)
 	}
 	pkt := &pb.MeshPacket{
-		From: n.cfg.NodeID.Uint32(),
-		To:   core.BroadcastNodeID.Uint32(),
+		From:     n.cfg.NodeID.Uint32(),
+		To:       core.BroadcastNodeID.Uint32(),
+		Priority: pb.MeshPacket_BACKGROUND,
 		PayloadVariant: &pb.MeshPacket_Decoded{
 			Decoded: &pb.Data{
 				Portnum: pb.PortNum_NEIGHBORINFO_APP,
@@ -208,8 +210,9 @@ func (n *Node) SendMapReport(ctx context.Context) error {
 		return fmt.Errorf("marshalling map report: %w", err)
 	}
 	pkt := &pb.MeshPacket{
-		From: n.cfg.NodeID.Uint32(),
-		To:   core.BroadcastNodeID.Uint32(),
+		From:     n.cfg.NodeID.Uint32(),
+		To:       core.BroadcastNodeID.Uint32(),
+		Priority: pb.MeshPacket_BACKGROUND,
 		PayloadVariant: &pb.MeshPacket_Decoded{
 			Decoded: &pb.Data{
 				Portnum: pb.PortNum_MAP_REPORT_APP,

@@ -371,6 +371,7 @@ func (n *Node) broadcastNodeInfo(ctx context.Context) error {
 	return n.sendPacket(ctx, &pb.MeshPacket{
 		From:           n.cfg.NodeID.Uint32(),
 		To:             core.BroadcastNodeID.Uint32(),
+		Priority:       pb.MeshPacket_BACKGROUND,
 		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
 	}, "")
 }
@@ -389,8 +390,9 @@ func (n *Node) broadcastPosition(ctx context.Context) error {
 		return fmt.Errorf("marshalling position: %w", err)
 	}
 	return n.sendPacket(ctx, &pb.MeshPacket{
-		From: n.cfg.NodeID.Uint32(),
-		To:   core.BroadcastNodeID.Uint32(),
+		From:     n.cfg.NodeID.Uint32(),
+		To:       core.BroadcastNodeID.Uint32(),
+		Priority: pb.MeshPacket_BACKGROUND,
 		PayloadVariant: &pb.MeshPacket_Decoded{
 			Decoded: &pb.Data{
 				Portnum: pb.PortNum_POSITION_APP,
