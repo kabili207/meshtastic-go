@@ -448,7 +448,7 @@ func TestSendPacket_SpecificChannel(t *testing.T) {
 
 func TestPKI_DisabledByDefault(t *testing.T) {
 	mt := newMockTransport()
-	n := newTestNode(t, mt) // no PKI funcs
+	n := newTestNode(t, mt) // no PKI keys
 
 	pkt := &pb.MeshPacket{
 		Channel: 0,
@@ -460,20 +460,15 @@ func TestPKI_DisabledByDefault(t *testing.T) {
 	}
 
 	if n.shouldTryPKI(pkt) {
-		t.Error("shouldTryPKI should return false when key funcs are nil")
+		t.Error("shouldTryPKI should return false when PKI keys are nil")
 	}
 }
 
 func TestPKI_ShouldTryPKI(t *testing.T) {
 	mt := newMockTransport()
 	n := newTestNode(t, mt, func(c *Config) {
-		c.PrivateKeyFunc = func(id core.NodeID) []byte {
-			if id == core.NodeID(0x12345678) {
-				return make([]byte, 32)
-			}
-			return nil
-		}
-		c.PublicKeyFunc = func(_ core.NodeID) []byte { return make([]byte, 32) }
+		c.PrivateKey = make([]byte, 32)
+		c.PublicKey = make([]byte, 32)
 	})
 
 	tests := []struct {
@@ -545,26 +540,18 @@ func TestPKI_RoundTrip(t *testing.T) {
 	mt := newMockTransport()
 	var got *event.TextMessage
 	n := newTestNode(t, mt, func(c *Config) {
-		c.PrivateKeyFunc = func(id core.NodeID) []byte {
-			if id == core.NodeID(0x12345678) {
-				return priv
-			}
-			return nil
-		}
-		c.PublicKeyFunc = func(id core.NodeID) []byte {
-			if id == core.NodeID(0xAA) {
-				return senderPub
-			}
-			if id == core.NodeID(0x12345678) {
-				return pub
-			}
-			return nil
-		}
+		c.PrivateKey = priv
+		c.PublicKey = pub
 		c.EventHandlers = []event.Handler{func(evt any) {
 			if e, ok := evt.(*event.TextMessage); ok {
 				got = e
 			}
 		}}
+	})
+
+	// Seed sender's public key in NodeDB so PKI decryption can look it up
+	n.db.Update(0xAA, func(info *pb.NodeInfo) {
+		info.User = &pb.User{PublicKey: senderPub}
 	})
 
 	// Encrypt a text message using PKI (sender's private key + recipient's public key)
@@ -611,8 +598,8 @@ func TestPKI_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestSendPKIPacket(t *testing.T) {
-	pub, priv, err := crypto.GenerateKeyPair()
+func TestSendData_PKI(t *testing.T) {
+	_, priv, err := crypto.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair: %v", err)
 	}
@@ -620,31 +607,25 @@ func TestSendPKIPacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKeyPair: %v", err)
 	}
-	_ = pub // our public key, not needed for send
 
 	mt := newMockTransport()
 	n := newTestNode(t, mt, func(c *Config) {
-		c.PrivateKeyFunc = func(id core.NodeID) []byte {
-			if id == core.NodeID(0x12345678) {
-				return priv
-			}
-			return nil
-		}
-		c.PublicKeyFunc = func(id core.NodeID) []byte {
-			if id == core.NodeID(0xBB) {
-				return recipientPub
-			}
-			return nil
-		}
+		c.PrivateKey = priv
+		c.PublicKey = make([]byte, 32) // own public key (not needed for send)
+	})
+
+	// Seed recipient's public key in NodeDB
+	n.db.Update(0xBB, func(info *pb.NodeInfo) {
+		info.User = &pb.User{PublicKey: recipientPub}
 	})
 
 	data := &pb.Data{
 		Portnum: pb.PortNum_TEXT_MESSAGE_APP,
 		Payload: []byte("outgoing PKI"),
 	}
-	err = n.SendPKIPacket(context.Background(), core.NodeID(0x12345678), core.NodeID(0xBB), data)
+	err = n.SendData(context.Background(), core.NodeID(0xBB), data, true)
 	if err != nil {
-		t.Fatalf("SendPKIPacket: %v", err)
+		t.Fatalf("SendData: %v", err)
 	}
 
 	if mt.sentCount() != 1 {

@@ -14,6 +14,7 @@ import (
 	"github.com/kabili207/meshtastic-go/core"
 	"github.com/kabili207/meshtastic-go/core/crypto"
 	"github.com/kabili207/meshtastic-go/core/dedupe"
+	"github.com/kabili207/meshtastic-go/core/lora"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/broadcast"
 	"github.com/kabili207/meshtastic-go/device/clientapi"
@@ -58,13 +59,15 @@ type Config struct {
 	// TCPListenAddr for the client API TCP listener. Empty disables.
 	TCPListenAddr string
 
-	// PrivateKeyFunc returns the X25519 private key for a node this device manages.
-	// Return nil if the node is not managed. If nil, PKI decryption is disabled.
-	PrivateKeyFunc func(nodeID core.NodeID) []byte
+	// PrivateKey is the X25519 private key for this node. If nil, PKI is disabled.
+	PrivateKey []byte
 
-	// PublicKeyFunc returns the X25519 public key for any node.
-	// Return nil if unknown. If nil, PKI decryption is disabled.
-	PublicKeyFunc func(nodeID core.NodeID) []byte
+	// PublicKey is the X25519 public key for this node. If nil, PKI is disabled.
+	PublicKey []byte
+
+	// DefaultHopLimit for outbound packets. If zero, defaults to 3.
+	// The maximum usable value is 7.
+	DefaultHopLimit uint32
 
 	// EventHandlers are called for decoded mesh events. Optional.
 	EventHandlers []event.Handler
@@ -95,6 +98,12 @@ func (c *Config) validate() error {
 	if c.HwModel == pb.HardwareModel_UNSET {
 		c.HwModel = pb.HardwareModel_PRIVATE_HW
 	}
+	if c.DefaultHopLimit == 0 {
+		c.DefaultHopLimit = 3
+	}
+	if c.DefaultHopLimit > 7 {
+		c.DefaultHopLimit = 7
+	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()
 	}
@@ -114,6 +123,9 @@ type Node struct {
 	scheduler *broadcast.Scheduler
 	api       *clientapi.Server
 	packetIDs packetIDGenerator
+
+	sendMu   sync.Mutex
+	lastSend time.Time
 
 	eventMu       sync.RWMutex
 	eventHandlers []event.Handler
@@ -160,6 +172,7 @@ func New(cfg Config) (*Node, error) {
 		LongName:           cfg.LongName,
 		ShortName:          cfg.ShortName,
 		HwModel:            cfg.HwModel,
+		PublicKey:           cfg.PublicKey,
 		NodeInfoInterval:   cfg.BroadcastNodeInfoInterval,
 		PositionInterval:   cfg.BroadcastPositionInterval,
 		PositionLatitudeI:  cfg.PositionLatitudeI,
@@ -253,14 +266,88 @@ func (n *Node) emitEvent(evt any) {
 	}
 }
 
-// sendPacket stamps a packet ID and sends via the specified channel.
-// If channelName is empty, the primary channel is used.
+// sendPacket stamps a packet ID, applies defaults, encrypts decoded payloads,
+// and sends via the specified channel. If channelName is empty, the primary
+// channel is used.
 func (n *Node) sendPacket(_ context.Context, packet *pb.MeshPacket, channelName string) error {
 	packet.Id = n.packetIDs.next()
+
 	if channelName == "" {
 		channelName = n.cfg.Channels.Settings[0].Name
 	}
+
+	// Resolve channel definition for hash and encryption key.
+	var ch core.ChannelDef
+	if !packet.PkiEncrypted {
+		if found, ok := n.channels.LookupByName(channelName); ok {
+			ch = found
+			if packet.Channel == 0 {
+				packet.Channel = ch.GetHash()
+			}
+		}
+	}
+
+	n.applyPacketDefaults(packet)
+
+	// PSK-encrypt decoded payloads so other nodes can receive them.
+	if decoded := packet.GetDecoded(); decoded != nil && ch != nil {
+		if err := n.encryptDecoded(packet, decoded, ch.GetKeyBytes()); err != nil {
+			return fmt.Errorf("encrypting packet: %w", err)
+		}
+	}
+
+	n.sendMu.Lock()
+	defer n.sendMu.Unlock()
+
+	// Pace outbound packets so radio hardware has time to switch between
+	// TX and RX modes. Without this, burst-sending can cause packet loss.
+	if !n.lastSend.IsZero() {
+		if elapsed := time.Since(n.lastSend); elapsed < sendDelay {
+			time.Sleep(sendDelay - elapsed)
+		}
+	}
+	n.lastSend = time.Now()
+
 	return n.transport.SendPacket(channelName, packet)
+}
+
+// encryptDecoded marshals a Decoded payload and replaces it with an Encrypted
+// variant using AES-CTR (PSK encryption).
+func (n *Node) encryptDecoded(pkt *pb.MeshPacket, data *pb.Data, key []byte) error {
+	plaintext, err := proto.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("marshalling data: %w", err)
+	}
+	encrypted, err := crypto.XOR(plaintext, key, pkt.Id, pkt.From)
+	if err != nil {
+		return fmt.Errorf("XOR encrypt: %w", err)
+	}
+	pkt.PayloadVariant = &pb.MeshPacket_Encrypted{
+		Encrypted: encrypted,
+	}
+	return nil
+}
+
+const sendDelay = 200 * time.Millisecond
+
+// applyPacketDefaults fills in HopLimit, HopStart, Priority, RxTime, and
+// RelayNode when the caller has not set them explicitly.
+func (n *Node) applyPacketDefaults(pkt *pb.MeshPacket) {
+	if pkt.HopLimit == 0 {
+		pkt.HopLimit = n.cfg.DefaultHopLimit
+	}
+	if pkt.HopStart == 0 {
+		pkt.HopStart = pkt.HopLimit
+	}
+	if pkt.Priority == pb.MeshPacket_UNSET {
+		pkt.Priority = lora.GetPriority(pkt.GetDecoded(), pkt.WantAck)
+	}
+	if pkt.RxTime == 0 {
+		pkt.RxTime = uint32(time.Now().Unix())
+	}
+	if pkt.RelayNode == 0 {
+		pkt.RelayNode = n.cfg.NodeID.Uint32() & 0xFF
+	}
 }
 
 // handleIncomingPacket is the full incoming packet pipeline:

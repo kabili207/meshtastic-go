@@ -28,6 +28,8 @@ type Config struct {
 	ShortName string
 	// HwModel for NodeInfo broadcasts.
 	HwModel pb.HardwareModel
+	// PublicKey is the X25519 public key included in NodeInfo broadcasts.
+	PublicKey []byte
 
 	// NodeInfoInterval is the interval between NodeInfo broadcasts.
 	// Zero disables NodeInfo broadcasting.
@@ -135,6 +137,7 @@ func (s *Scheduler) BroadcastNodeInfo(ctx context.Context) error {
 		LongName:  s.cfg.LongName,
 		ShortName: s.cfg.ShortName,
 		HwModel:   s.cfg.HwModel,
+		PublicKey: s.cfg.PublicKey,
 	}
 	userBytes, err := proto.Marshal(user)
 	if err != nil {

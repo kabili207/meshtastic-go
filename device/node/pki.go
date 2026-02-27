@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
 	"github.com/kabili207/meshtastic-go/core/crypto"
@@ -10,10 +11,26 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// hasPKI returns true if this node has PKI keys configured.
+func (n *Node) hasPKI() bool {
+	return len(n.cfg.PrivateKey) > 0 && len(n.cfg.PublicKey) > 0
+}
+
+// lookupPublicKey returns the X25519 public key for a remote node by checking
+// the NodeDB. Returns nil if the node is unknown or has no public key.
+func (n *Node) lookupPublicKey(id core.NodeID) []byte {
+	if info := n.db.Get(id.Uint32()); info != nil && info.User != nil {
+		if len(info.User.PublicKey) > 0 {
+			return info.User.PublicKey
+		}
+	}
+	return nil
+}
+
 // shouldTryPKI returns true if the packet should be attempted for PKI decryption.
-// PKI is used for channel-0 unicast packets addressed to a node we manage.
+// PKI is used for channel-0 unicast packets addressed to this node.
 func (n *Node) shouldTryPKI(pkt *pb.MeshPacket) bool {
-	if n.cfg.PrivateKeyFunc == nil || n.cfg.PublicKeyFunc == nil {
+	if !n.hasPKI() {
 		return false
 	}
 	if _, ok := pkt.PayloadVariant.(*pb.MeshPacket_Encrypted); !ok {
@@ -23,39 +40,50 @@ func (n *Node) shouldTryPKI(pkt *pb.MeshPacket) bool {
 	return pkt.Channel == 0 &&
 		pkt.To > 0 &&
 		!to.IsBroadcast() &&
-		n.cfg.PrivateKeyFunc(to) != nil
+		to == n.cfg.NodeID
 }
 
-// tryDecryptPKI attempts to decrypt a PKI-encrypted packet using the managed
-// node's private key and the sender's public key.
+// tryDecryptPKI attempts to decrypt a PKI-encrypted packet using this node's
+// private key and the sender's public key from the NodeDB.
 func (n *Node) tryDecryptPKI(pkt *pb.MeshPacket) (*pb.Data, error) {
-	to := core.NodeID(pkt.To)
 	from := core.NodeID(pkt.From)
 
-	privKey := n.cfg.PrivateKeyFunc(to)
-	if privKey == nil {
-		return nil, fmt.Errorf("no private key for %s", to)
-	}
-	pubKey := n.cfg.PublicKeyFunc(from)
+	pubKey := n.lookupPublicKey(from)
 	if pubKey == nil {
 		return nil, fmt.Errorf("no public key for %s", from)
 	}
 
-	return crypto.TryDecodePKI(pkt, pubKey, privKey)
+	return crypto.TryDecodePKI(pkt, pubKey, n.cfg.PrivateKey)
 }
 
-// SendPKIPacket sends a PKI-encrypted packet from a managed node to a
-// specific recipient. The sender's private key is fetched via PrivateKeyFunc
-// and the recipient's public key via PublicKeyFunc.
-func (n *Node) SendPKIPacket(ctx context.Context, from, to core.NodeID, data *pb.Data) error {
-	if n.cfg.PrivateKeyFunc == nil || n.cfg.PublicKeyFunc == nil {
+// SendData sends a data payload to a recipient. If usePKI is true and PKI
+// keys are available for both sender and recipient, the packet is sent with
+// Curve25519 encryption. Otherwise it falls back to PSK channel encryption
+// on the primary channel.
+func (n *Node) SendData(ctx context.Context, to core.NodeID, data *pb.Data, usePKI bool) error {
+	if usePKI {
+		err := n.sendPKIPacket(ctx, to, data)
+		if err == nil {
+			return nil
+		}
+		n.log.Debug("PKI send failed, falling back to PSK", "to", to, "error", err)
+	}
+	return n.sendPacket(ctx, &pb.MeshPacket{
+		From: n.cfg.NodeID.Uint32(),
+		To:   to.Uint32(),
+		PayloadVariant: &pb.MeshPacket_Decoded{
+			Decoded: data,
+		},
+	}, "")
+}
+
+// sendPKIPacket sends a PKI-encrypted packet to a specific recipient using
+// this node's private key and the recipient's public key from the NodeDB.
+func (n *Node) sendPKIPacket(ctx context.Context, to core.NodeID, data *pb.Data) error {
+	if !n.hasPKI() {
 		return fmt.Errorf("PKI not configured")
 	}
-	privKey := n.cfg.PrivateKeyFunc(from)
-	if privKey == nil {
-		return fmt.Errorf("no private key for sender %s", from)
-	}
-	pubKey := n.cfg.PublicKeyFunc(to)
+	pubKey := n.lookupPublicKey(to)
 	if pubKey == nil {
 		return fmt.Errorf("no public key for recipient %s", to)
 	}
@@ -66,14 +94,14 @@ func (n *Node) SendPKIPacket(ctx context.Context, from, to core.NodeID, data *pb
 	}
 
 	packetID := n.packetIDs.next()
-	encrypted, err := crypto.EncryptCurve25519(plaintext, privKey, pubKey, packetID, from.Uint32())
+	encrypted, err := crypto.EncryptCurve25519(plaintext, n.cfg.PrivateKey, pubKey, packetID, n.cfg.NodeID.Uint32())
 	if err != nil {
 		return fmt.Errorf("PKI encryption: %w", err)
 	}
 
 	pkt := &pb.MeshPacket{
 		Id:           packetID,
-		From:         from.Uint32(),
+		From:         n.cfg.NodeID.Uint32(),
 		To:           to.Uint32(),
 		Channel:      0,
 		PkiEncrypted: true,
@@ -81,6 +109,16 @@ func (n *Node) SendPKIPacket(ctx context.Context, from, to core.NodeID, data *pb
 			Encrypted: encrypted,
 		},
 	}
+	n.applyPacketDefaults(pkt)
+
+	n.sendMu.Lock()
+	defer n.sendMu.Unlock()
+	if !n.lastSend.IsZero() {
+		if elapsed := time.Since(n.lastSend); elapsed < sendDelay {
+			time.Sleep(sendDelay - elapsed)
+		}
+	}
+	n.lastSend = time.Now()
 
 	// PKI packets use channel 0; send on primary channel's transport topic
 	return n.transport.SendPacket(n.cfg.Channels.Settings[0].Name, pkt)

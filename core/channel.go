@@ -119,6 +119,16 @@ func (r *ChannelRegistry) LookupName(hash uint32) string {
 	return ""
 }
 
+// LookupByName finds a channel by its name.
+func (r *ChannelRegistry) LookupByName(name string) (ChannelDef, bool) {
+	for _, ch := range r.channels {
+		if ch.GetName() == name {
+			return ch, true
+		}
+	}
+	return nil, false
+}
+
 // All returns all registered channels.
 func (r *ChannelRegistry) All() []ChannelDef {
 	result := make([]ChannelDef, 0, len(r.channels))
