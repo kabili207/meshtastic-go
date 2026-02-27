@@ -129,6 +129,8 @@ type Node struct {
 	api       *clientapi.Server
 	packetIDs packetIDGenerator
 
+	throttle *requestThrottle
+
 	sendMu   sync.Mutex
 	lastSend time.Time
 
@@ -148,6 +150,7 @@ func New(cfg Config) (*Node, error) {
 		log:       cfg.Logger.WithGroup("node").With("node", cfg.NodeID.String()),
 		transport: cfg.Transport,
 		dedup:     dedupe.NewDeduplicator(2 * time.Hour),
+		throttle:  newRequestThrottle(),
 	}
 
 	// Seed event handlers from config
@@ -415,6 +418,37 @@ func (n *Node) respondNodeInfo(to uint32, requestID uint32) {
 	}
 }
 
+// respondPosition sends our Position as a unicast response to a WantResponse request.
+func (n *Node) respondPosition(to uint32, requestID uint32) {
+	pos := &pb.Position{
+		LatitudeI:  &n.cfg.PositionLatitudeI,
+		LongitudeI: &n.cfg.PositionLongitudeI,
+		Altitude:   &n.cfg.PositionAltitude,
+		Time:       uint32(time.Now().Unix()),
+	}
+	posBytes, err := proto.Marshal(pos)
+	if err != nil {
+		n.log.Error("failed to marshal Position response", "error", err)
+		return
+	}
+	pkt := &pb.MeshPacket{
+		From: n.cfg.NodeID.Uint32(),
+		To:   to,
+		PayloadVariant: &pb.MeshPacket_Decoded{
+			Decoded: &pb.Data{
+				Portnum:   pb.PortNum_POSITION_APP,
+				Payload:   posBytes,
+				RequestId: requestID,
+			},
+		},
+	}
+	if err := n.sendPacket(context.Background(), pkt, ""); err != nil {
+		n.log.Error("failed to send Position response", "to", core.NodeID(to), "error", err)
+	} else {
+		n.log.Debug("sent Position response", "to", core.NodeID(to))
+	}
+}
+
 const sendDelay = 200 * time.Millisecond
 
 // applyPacketDefaults fills in HopLimit, HopStart, Priority, RxTime, and
@@ -522,7 +556,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 		n.emitEvent(&event.NodeInfoUpdated{Event: base, User: user})
 
 		// Respond to NodeInfo requests with our own NodeInfo
-		if data.WantResponse {
+		if data.WantResponse && n.throttle.canRespond(core.NodeID(from), pb.PortNum_NODEINFO_APP) {
 			n.respondNodeInfo(from, pkt.Packet.Id)
 		}
 
@@ -534,6 +568,11 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 		}
 		n.db.Update(from, func(info *pb.NodeInfo) { info.Position = pos })
 		n.emitEvent(&event.PositionUpdated{Event: base, Position: pos})
+
+		// Respond to Position requests with our position
+		if data.WantResponse && n.throttle.canRespond(core.NodeID(from), pb.PortNum_POSITION_APP) {
+			n.respondPosition(from, pkt.Packet.Id)
+		}
 
 	case pb.PortNum_TELEMETRY_APP:
 		tel := &pb.Telemetry{}
