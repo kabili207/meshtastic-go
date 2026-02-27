@@ -66,6 +66,49 @@ type TextMessage struct {
 	Emoji uint32
 }
 
+// WaypointReceived is emitted when a WAYPOINT_APP packet is processed.
+type WaypointReceived struct {
+	Event
+	// Waypoint is the decoded waypoint data.
+	Waypoint *pb.Waypoint
+	// IsDelete is true when the waypoint's expiration time is in the past,
+	// indicating the sender wants to remove it.
+	IsDelete bool
+}
+
+// NeighborInfoReceived is emitted when a NEIGHBORINFO_APP packet is processed.
+type NeighborInfoReceived struct {
+	Event
+	// NeighborInfo contains the sender's neighbor list and metadata.
+	NeighborInfo *pb.NeighborInfo
+}
+
+// MapReportReceived is emitted when a MAP_REPORT_APP packet is processed.
+type MapReportReceived struct {
+	Event
+	// MapReport contains the node's map report data.
+	MapReport *pb.MapReport
+}
+
+// TracerouteReceived is emitted when a TRACEROUTE_APP packet is processed.
+type TracerouteReceived struct {
+	Event
+	// RouteDiscovery contains the route hops and SNR data.
+	RouteDiscovery *pb.RouteDiscovery
+	// IsRequest is true for traceroute requests, false for responses.
+	IsRequest bool
+}
+
+// RoutingReceived is emitted when a ROUTING_APP packet is processed.
+// This covers ACKs, NACKs, and other routing error notifications.
+type RoutingReceived struct {
+	Event
+	// ErrorReason is the routing result. NONE indicates a successful ACK.
+	ErrorReason pb.Routing_Error
+	// OriginalPacketID is the packet ID this routing message is responding to.
+	OriginalPacketID uint32
+}
+
 // PacketReceived is emitted for any successfully decoded packet whose portnum
 // does not have a more specific event type. Useful as a catch-all.
 type PacketReceived struct {

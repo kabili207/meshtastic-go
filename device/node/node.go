@@ -555,6 +555,74 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 			Emoji:   data.Emoji,
 		})
 
+	case pb.PortNum_WAYPOINT_APP:
+		wp := &pb.Waypoint{}
+		if err := proto.Unmarshal(data.Payload, wp); err != nil {
+			n.log.Debug("failed to unmarshal Waypoint", "error", err)
+			return
+		}
+		isDelete := wp.Expire > 0 && time.Unix(int64(wp.Expire), 0).Before(time.Now())
+		n.emitEvent(&event.WaypointReceived{Event: base, Waypoint: wp, IsDelete: isDelete})
+
+	case pb.PortNum_NEIGHBORINFO_APP:
+		ni := &pb.NeighborInfo{}
+		if err := proto.Unmarshal(data.Payload, ni); err != nil {
+			n.log.Debug("failed to unmarshal NeighborInfo", "error", err)
+			return
+		}
+		n.emitEvent(&event.NeighborInfoReceived{Event: base, NeighborInfo: ni})
+
+	case pb.PortNum_MAP_REPORT_APP:
+		mr := &pb.MapReport{}
+		if err := proto.Unmarshal(data.Payload, mr); err != nil {
+			n.log.Debug("failed to unmarshal MapReport", "error", err)
+			return
+		}
+		// Update NodeDB with position and user info from map report.
+		n.db.Update(from, func(info *pb.NodeInfo) {
+			if info.Position == nil {
+				info.Position = &pb.Position{}
+			}
+			info.Position.LatitudeI = &mr.LatitudeI
+			info.Position.LongitudeI = &mr.LongitudeI
+			if mr.Altitude != 0 {
+				info.Position.Altitude = &mr.Altitude
+			}
+			if info.User == nil {
+				info.User = &pb.User{}
+			}
+			if mr.LongName != "" {
+				info.User.LongName = mr.LongName
+			}
+			if mr.ShortName != "" {
+				info.User.ShortName = mr.ShortName
+			}
+			info.User.HwModel = mr.HwModel
+			info.User.Role = mr.Role
+		})
+		n.emitEvent(&event.MapReportReceived{Event: base, MapReport: mr})
+
+	case pb.PortNum_TRACEROUTE_APP:
+		rd := &pb.RouteDiscovery{}
+		if err := proto.Unmarshal(data.Payload, rd); err != nil {
+			n.log.Debug("failed to unmarshal RouteDiscovery", "error", err)
+			return
+		}
+		isRequest := data.WantResponse
+		n.emitEvent(&event.TracerouteReceived{Event: base, RouteDiscovery: rd, IsRequest: isRequest})
+
+	case pb.PortNum_ROUTING_APP:
+		routing := &pb.Routing{}
+		if err := proto.Unmarshal(data.Payload, routing); err != nil {
+			n.log.Debug("failed to unmarshal Routing", "error", err)
+			return
+		}
+		n.emitEvent(&event.RoutingReceived{
+			Event:            base,
+			ErrorReason:      routing.GetErrorReason(),
+			OriginalPacketID: data.RequestId,
+		})
+
 	default:
 		n.emitEvent(&event.PacketReceived{Event: base})
 	}
