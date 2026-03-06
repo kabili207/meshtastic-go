@@ -71,7 +71,7 @@ func (n *Node) SendText(ctx context.Context, to core.NodeID, message string, opt
 		WantAck:        o.wantAck,
 		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
 	}
-	return n.sendPacket(ctx, pkt, o.channel)
+	return n.base.sendPacket(ctx, pkt, o.channel)
 }
 
 // SendAck sends a routing ACK for the given packet ID.
@@ -106,7 +106,7 @@ func (n *Node) sendRoutingResponse(ctx context.Context, to core.NodeID, packetID
 			},
 		},
 	}
-	return n.sendPacket(ctx, pkt, "")
+	return n.base.sendPacket(ctx, pkt, "")
 }
 
 // SendWaypoint sends a waypoint to the specified destination on the given channel.
@@ -131,7 +131,7 @@ func (n *Node) SendWaypoint(ctx context.Context, to core.NodeID, waypoint *pb.Wa
 			},
 		},
 	}
-	return n.sendPacket(ctx, pkt, o.channel)
+	return n.base.sendPacket(ctx, pkt, o.channel)
 }
 
 // SendNeighborInfo broadcasts neighbor information. The neighbor list is
@@ -168,7 +168,7 @@ func (n *Node) SendNeighborInfo(ctx context.Context, neighbors []*pb.Neighbor) e
 			},
 		},
 	}
-	return n.sendPacket(ctx, pkt, "")
+	return n.base.sendPacket(ctx, pkt, "")
 }
 
 // RequestTraceroute sends a traceroute request to the specified node.
@@ -190,7 +190,7 @@ func (n *Node) RequestTraceroute(ctx context.Context, to core.NodeID) error {
 			},
 		},
 	}
-	return n.sendPacket(ctx, pkt, "")
+	return n.base.sendPacket(ctx, pkt, "")
 }
 
 // SendMapReport broadcasts a map report built from this node's configuration.
@@ -220,7 +220,7 @@ func (n *Node) SendMapReport(ctx context.Context) error {
 			},
 		},
 	}
-	return n.sendPacket(ctx, pkt, "")
+	return n.base.sendPacket(ctx, pkt, "")
 }
 
 func applySendOptions(opts []SendOption) sendOptions {

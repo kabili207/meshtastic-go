@@ -66,9 +66,9 @@ func (n *Node) SendData(ctx context.Context, to core.NodeID, data *pb.Data, useP
 		if err == nil {
 			return nil
 		}
-		n.log.Debug("PKI send failed, falling back to PSK", "to", to, "error", err)
+		n.base.log.Debug("PKI send failed, falling back to PSK", "to", to, "error", err)
 	}
-	return n.sendPacket(ctx, &pb.MeshPacket{
+	return n.base.sendPacket(ctx, &pb.MeshPacket{
 		From: n.cfg.NodeID.Uint32(),
 		To:   to.Uint32(),
 		PayloadVariant: &pb.MeshPacket_Decoded{
@@ -93,7 +93,7 @@ func (n *Node) sendPKIPacket(ctx context.Context, to core.NodeID, data *pb.Data)
 		return fmt.Errorf("marshalling data: %w", err)
 	}
 
-	packetID := n.packetIDs.next()
+	packetID := n.base.packetIDs.next()
 	encrypted, err := crypto.EncryptCurve25519(plaintext, n.cfg.PrivateKey, pubKey, packetID, n.cfg.NodeID.Uint32())
 	if err != nil {
 		return fmt.Errorf("PKI encryption: %w", err)
@@ -109,17 +109,17 @@ func (n *Node) sendPKIPacket(ctx context.Context, to core.NodeID, data *pb.Data)
 			Encrypted: encrypted,
 		},
 	}
-	n.applyPacketDefaults(pkt)
+	n.base.applyPacketDefaults(pkt)
 
-	n.sendMu.Lock()
-	defer n.sendMu.Unlock()
-	if !n.lastSend.IsZero() {
-		if elapsed := time.Since(n.lastSend); elapsed < sendDelay {
+	n.base.sendMu.Lock()
+	defer n.base.sendMu.Unlock()
+	if !n.base.lastSend.IsZero() {
+		if elapsed := time.Since(n.base.lastSend); elapsed < sendDelay {
 			time.Sleep(sendDelay - elapsed)
 		}
 	}
-	n.lastSend = time.Now()
+	n.base.lastSend = time.Now()
 
 	// PKI packets use channel 0; send on primary channel's transport topic
-	return n.transport.SendPacket(n.cfg.Channels.Settings[0].Name, pkt)
+	return n.base.transport.SendPacket(n.base.primaryChannel, pkt)
 }

@@ -33,6 +33,9 @@ type Event struct {
 	IsPKI bool
 	// RawData is the full decoded pb.Data, for consumers that need the raw payload.
 	RawData *pb.Data
+	// ManagedNodeID is set when the packet was addressed to a specific managed
+	// node (in a BridgeNode context). Zero for Node or broadcast packets.
+	ManagedNodeID core.NodeID
 }
 
 // NodeInfoUpdated is emitted when a NODEINFO_APP packet is processed.

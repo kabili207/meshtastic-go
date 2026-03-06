@@ -413,7 +413,7 @@ func TestSendPacket_DefaultsToPrimary(t *testing.T) {
 	mt := newMockTransport()
 	n := newTestNode(t, mt)
 
-	err := n.sendPacket(context.Background(), &pb.MeshPacket{
+	err := n.base.sendPacket(context.Background(), &pb.MeshPacket{
 		From: 0x12345678,
 		To:   core.BroadcastNodeID.Uint32(),
 	}, "")
@@ -434,7 +434,7 @@ func TestSendPacket_SpecificChannel(t *testing.T) {
 	mt := newMockTransport()
 	n := newTestNode(t, mt)
 
-	err := n.sendPacket(context.Background(), &pb.MeshPacket{
+	err := n.base.sendPacket(context.Background(), &pb.MeshPacket{
 		From: 0x12345678,
 	}, "CustomChannel")
 	if err != nil {
