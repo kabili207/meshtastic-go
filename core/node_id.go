@@ -69,17 +69,17 @@ func (n NodeID) DefaultShortName() string {
 // use or invalid, a random NodeID is generated.
 // Source: https://github.com/meshtastic/firmware/blob/d1ea58975755e146457a8345065e4ca357555275/src/mesh/NodeDB.cpp#L466
 func RandomNodeID() (NodeID, error) {
-	// Generates a random uint32 between reservedNodeIDThreshold and math.MaxUint32
+	// Generates a random uint32 between ReservedNodeIDThreshold and math.MaxUint32
 	randomInt, err := rand.Int(
 		rand.Reader,
 		big.NewInt(
-			int64(math.MaxUint32-reservedNodeIDThreshold.Uint32()),
+			int64(math.MaxUint32-ReservedNodeIDThreshold.Uint32()),
 		),
 	)
 	if err != nil {
 		return NodeID(0), fmt.Errorf("reading entropy: %w", err)
 	}
-	r := uint32(randomInt.Uint64()) + reservedNodeIDThreshold.Uint32()
+	r := uint32(randomInt.Uint64()) + ReservedNodeIDThreshold.Uint32()
 	return NodeID(r), nil
 }
 
@@ -156,7 +156,7 @@ func (n NodeID) MarshalText() ([]byte, error) {
 
 // IsReservedID returns true if this is a reserved or broadcast NodeID.
 func (n NodeID) IsReservedID() bool {
-	return n < reservedNodeIDThreshold || n >= BroadcastNodeIDNoLora
+	return n < ReservedNodeIDThreshold || n.IsBroadcast()
 }
 
 // IsBroadcast returns true if this is any form of broadcast address.

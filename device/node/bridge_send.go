@@ -109,8 +109,7 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 		if !ok {
 			return 0, fmt.Errorf("unknown channel %q", channelName)
 		}
-		hash, _ := crypto.ChannelHash(ch.GetName(), ch.GetKeyBytes())
-		pkt.Channel = hash
+		pkt.Channel = crypto.ChannelHash(ch.GetName(), ch.GetKeyBytes())
 		raw, err := proto.Marshal(data)
 		if err != nil {
 			return 0, fmt.Errorf("marshalling data: %w", err)

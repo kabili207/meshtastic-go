@@ -3,7 +3,6 @@ package crypto
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"strings"
 
 	pb "github.com/kabili207/meshtastic-go/core/proto"
@@ -106,15 +105,19 @@ func xorHash(p []byte) uint8 {
 }
 
 // ChannelHash returns the hash for a given channel by XORing the channel name and PSK.
-func ChannelHash(channelName string, channelKey []byte) (uint32, error) {
-	if len(channelKey) == 0 {
-		return 0, fmt.Errorf("channel key cannot be empty")
-	}
-
+//
+// An empty key is allowed and contributes nothing to the hash (matching the
+// firmware, where unencrypted channels hash from the name alone).
+//
+// The caller is responsible for passing the resolved channel name. For the
+// primary channel the firmware stores an empty name and substitutes the modem
+// preset display name (e.g. "LongFast") before hashing; pass that resolved name
+// here, not the empty string, or the hash will not match the firmware.
+func ChannelHash(channelName string, channelKey []byte) uint32 {
 	h := xorHash([]byte(channelName))
 	h ^= xorHash(channelKey)
 
-	return uint32(h), nil
+	return uint32(h)
 }
 
 // GenerateWeakKeys creates weak keys derived from DefaultKey for brute-force

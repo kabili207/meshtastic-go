@@ -112,30 +112,27 @@ func TestTryCompactKey(t *testing.T) {
 
 func TestChannelHash(t *testing.T) {
 	// Test basic channel hash
-	hash, err := ChannelHash("LongFast", DefaultKey)
-	if err != nil {
-		t.Errorf("ChannelHash error: %v", err)
-	}
+	hash := ChannelHash("LongFast", DefaultKey)
 	if hash == 0 {
 		t.Error("ChannelHash returned 0")
 	}
 
 	// Same inputs should produce same hash
-	hash2, _ := ChannelHash("LongFast", DefaultKey)
+	hash2 := ChannelHash("LongFast", DefaultKey)
 	if hash != hash2 {
 		t.Error("ChannelHash not deterministic")
 	}
 
 	// Different channel name should produce different hash
-	hash3, _ := ChannelHash("ShortFast", DefaultKey)
+	hash3 := ChannelHash("ShortFast", DefaultKey)
 	if hash == hash3 {
 		t.Error("ChannelHash same for different channel names")
 	}
 
-	// Empty key should error
-	_, err = ChannelHash("test", nil)
-	if err == nil {
-		t.Error("ChannelHash should error on empty key")
+	// An empty key is allowed; the hash comes from the name alone and must
+	// match the firmware, which hashes unencrypted channels the same way.
+	if got, want := ChannelHash("test", nil), uint32(xorHash([]byte("test"))); got != want {
+		t.Errorf("ChannelHash with empty key = %d, want %d", got, want)
 	}
 }
 

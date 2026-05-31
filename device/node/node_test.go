@@ -177,7 +177,7 @@ func TestMultiChannel_PSKDecrypt(t *testing.T) {
 	}
 	dataBytes, _ := proto.Marshal(data)
 
-	hash, _ := crypto.ChannelHash("SecondCh", secondKey)
+	hash := crypto.ChannelHash("SecondCh", secondKey)
 	encrypted, _ := crypto.XOR(dataBytes, secondKey, 99, 0xBB)
 
 	pkt := transport.NetworkPacket{

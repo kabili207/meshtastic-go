@@ -65,8 +65,7 @@ func (c *Channel) GetKeyBytes() []byte {
 
 // GetHash returns the channel hash used for routing.
 func (c *Channel) GetHash() uint32 {
-	hash, _ := crypto.ChannelHash(c.Name, c.Key)
-	return hash
+	return crypto.ChannelHash(c.Name, c.Key)
 }
 
 // ChannelFromSettings creates a Channel from a protobuf ChannelSettings.
