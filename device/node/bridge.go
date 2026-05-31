@@ -61,6 +61,27 @@ type BridgeConfig struct {
 	// Return ok=false if the node should not auto-respond.
 	NodeInfoForNode func(core.NodeID) (longName, shortName string, pubKey []byte, ok bool)
 
+	// NeighborProvider returns the neighbor node IDs for a managed node, used to
+	// answer on-demand neighbor info requests. Optional.
+	NeighborProvider func(core.NodeID) []core.NodeID
+
+	// NeighborBroadcastInterval is the interval (seconds) reported in neighbor
+	// info responses.
+	NeighborBroadcastInterval uint32
+
+	// HostMetricsProvider builds a host-metrics Telemetry payload on demand. The
+	// bridge does not gather host metrics itself; supply this to answer host
+	// metric requests and broadcasts. Optional.
+	HostMetricsProvider func() (*pb.Telemetry, error)
+
+	// StartTime is the reference time for device-metrics uptime. Defaults to the
+	// time the bridge was created.
+	StartTime time.Time
+
+	// OnStateChange is called when the underlying transport's aggregate
+	// connection state changes. Optional.
+	OnStateChange func(transport.ListenerEvent)
+
 	// EventHandlers are called for decoded mesh events. Optional.
 	EventHandlers []event.Handler
 
@@ -94,13 +115,16 @@ func (c *BridgeConfig) validate() error {
 		c.HwModel = pb.HardwareModel_PRIVATE_HW
 	}
 	if c.DefaultHopLimit == 0 {
-		c.DefaultHopLimit = 3
+		c.DefaultHopLimit = core.DefaultHopLimit
 	}
-	if c.DefaultHopLimit > 7 {
-		c.DefaultHopLimit = 7
+	if c.DefaultHopLimit > core.MaxHops {
+		c.DefaultHopLimit = core.MaxHops
 	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()
+	}
+	if c.StartTime.IsZero() {
+		c.StartTime = time.Now().UTC()
 	}
 	return nil
 }
@@ -166,9 +190,15 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 	return b, nil
 }
 
-// Run starts the transport and incoming packet pipeline. It blocks until ctx is cancelled.
+// Run starts the transport and incoming packet pipeline. It blocks until ctx is
+// cancelled, then stops the transport before returning.
 func (b *BridgeNode) Run(ctx context.Context) error {
 	b.base.transport.SetPacketHandler(b.handleIncomingPacket)
+	if b.cfg.OnStateChange != nil {
+		b.base.transport.SetStateHandler(func(_ transport.Transport, e transport.ListenerEvent) {
+			b.cfg.OnStateChange(e)
+		})
+	}
 
 	// Subscribe to configured channels
 	for _, ch := range b.cfg.Channels.Settings {
@@ -181,6 +211,24 @@ func (b *BridgeNode) Run(ctx context.Context) error {
 	}
 
 	<-ctx.Done()
+	_ = b.base.transport.Stop()
+	return nil
+}
+
+// IsConnected reports whether the underlying transport is connected.
+func (b *BridgeNode) IsConnected() bool {
+	return b.base.transport.IsConnected()
+}
+
+// AddChannel registers an additional channel at runtime and subscribes the
+// transport to it. keyStr is the base64-encoded PSK (or short PSK).
+func (b *BridgeNode) AddChannel(name, keyStr string) error {
+	ch, err := core.NewChannel(name, keyStr)
+	if err != nil {
+		return fmt.Errorf("creating channel %q: %w", name, err)
+	}
+	b.base.channels.Register(ch)
+	b.base.transport.AddChannel(name)
 	return nil
 }
 
@@ -218,7 +266,7 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 	// 3. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
 		channelName := b.base.channels.LookupName(pkt.Packet.Channel)
-		b.processDecoded(pkt, decoded, channelName, false, 0)
+		b.processDecoded(pkt, decoded, channelName, nil, false, 0)
 		return
 	}
 
@@ -227,7 +275,7 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 	if b.shouldTryPKI(pkt.Packet) {
 		data, err := b.tryDecryptPKI(pkt.Packet)
 		if err == nil && data != nil {
-			b.processDecoded(pkt, data, "PKI", true, to)
+			b.processDecoded(pkt, data, "PKI", nil, true, to)
 			return
 		}
 		b.base.log.Debug("PKI decryption failed, falling back to PSK", "error", err)
@@ -248,7 +296,24 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 		return
 	}
 
-	b.processDecoded(pkt, data, ch.GetName(), false, 0)
+	channelKey := ch.GetKeyString()
+	b.processDecoded(pkt, data, ch.GetName(), &channelKey, false, 0)
+}
+
+// gatewayNode derives the node that delivered this packet. For MQTT it is the
+// gateway ID from the service envelope; for radio/UDP it is derived from the
+// relay node, falling back to the sender when the packet arrived directly.
+func gatewayNode(pkt transport.NetworkPacket) core.NodeID {
+	if pkt.GatewayID != "" {
+		if id, err := core.ParseNodeID(pkt.GatewayID); err == nil {
+			return id
+		}
+	}
+	p := pkt.Packet
+	if p.HopStart == p.HopLimit && p.RelayNode == (p.From&0xFF) {
+		return core.NodeID(p.From)
+	}
+	return core.NodeID(p.RelayNode)
 }
 
 // shouldTryPKI returns true if the packet should be attempted for PKI decryption.
@@ -290,22 +355,43 @@ func (b *BridgeNode) tryDecryptPKI(pkt *pb.MeshPacket) (*pb.Data, error) {
 
 // processDecoded handles a successfully decoded packet: updates the nodedb,
 // handles WantResponse auto-replies for managed nodes, and emits typed events.
-// managedTo is the managed node this packet was addressed to (for PKI unicast),
-// or 0 for PSK/broadcast packets.
-func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channelName string, isPKI bool, managedTo core.NodeID) {
+// channelKey is the base64 PSK key the packet was decrypted with (nil for PKI
+// or already-decoded packets). managedTo is the managed node this packet was
+// addressed to (for PKI unicast), or 0 for PSK/broadcast packets.
+func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channelName string, channelKey *string, isPKI bool, managedTo core.NodeID) {
+	via := gatewayNode(pkt)
 	evt := event.Event{
 		ChannelName:   channelName,
+		ChannelKey:    channelKey,
 		From:          core.NodeID(pkt.Packet.From),
 		To:            core.NodeID(pkt.Packet.To),
+		Via:           via,
 		Timestamp:     time.Now(),
 		PacketID:      pkt.Packet.Id,
 		Portnum:       data.Portnum,
 		IsPKI:         isPKI,
 		RawData:       data,
 		ManagedNodeID: managedTo,
+		WantAck:       pkt.Packet.WantAck,
+		WantResponse:  data.WantResponse,
+		IsNeighbor: pkt.Source != transport.PacketSourceMQTT &&
+			pkt.Packet.HopStart == pkt.Packet.HopLimit && !pkt.Packet.ViaMqtt,
 	}
 	if pkt.Packet.RxTime > 0 {
 		evt.Timestamp = time.Unix(int64(pkt.Packet.RxTime), 0)
+	}
+
+	// reqCtx carries the raw-packet fields the request responders need.
+	reqCtx := eventContext{
+		From:        evt.From,
+		To:          evt.To,
+		Via:         via,
+		PacketID:    evt.PacketID,
+		ChannelName: channelName,
+		WantAck:     pkt.Packet.WantAck,
+		HopStart:    pkt.Packet.HopStart,
+		HopLimit:    pkt.Packet.HopLimit,
+		RxSnr:       pkt.Packet.RxSnr,
 	}
 
 	from := pkt.Packet.From
@@ -322,7 +408,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 
 		// Auto-respond to NodeInfo WantResponse on behalf of managed nodes
 		if data.WantResponse {
-			b.respondNodeInfoForManaged(from, pkt.Packet.Id)
+			b.respondNodeInfoForManaged(evt)
 		}
 
 	case pb.PortNum_POSITION_APP:
@@ -344,6 +430,11 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			b.db.Update(from, func(info *pb.NodeInfo) { info.DeviceMetrics = metrics })
 		}
 		b.base.emitEvent(&event.TelemetryUpdated{Event: evt, Telemetry: tel})
+
+		// Auto-respond to telemetry requests addressed to a managed node.
+		if data.WantResponse && !evt.To.IsBroadcast() {
+			b.respondTelemetry(reqCtx, tel)
+		}
 
 	case pb.PortNum_TEXT_MESSAGE_APP:
 		b.base.emitEvent(&event.TextMessage{
@@ -370,6 +461,11 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			return
 		}
 		b.base.emitEvent(&event.NeighborInfoReceived{Event: evt, NeighborInfo: ni})
+
+		// Auto-respond to neighbor info requests addressed to a managed node.
+		if data.WantResponse && !evt.To.IsBroadcast() {
+			b.respondNeighborInfo(reqCtx, ni)
+		}
 
 	case pb.PortNum_MAP_REPORT_APP:
 		mr := &pb.MapReport{}
@@ -406,8 +502,21 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			b.base.log.Debug("failed to unmarshal RouteDiscovery", "error", err)
 			return
 		}
-		isRequest := data.WantResponse
-		b.base.emitEvent(&event.TracerouteReceived{Event: evt, RouteDiscovery: rd, IsRequest: isRequest})
+		if data.RequestId != 0 {
+			// This is a traceroute response travelling back to the originator.
+			// Build the return route before surfacing it to consumers.
+			b.handleTracerouteResponse(reqCtx, rd)
+			b.base.emitEvent(&event.TracerouteReceived{
+				Event:            evt,
+				RouteDiscovery:   rd,
+				IsRequest:        false,
+				OriginalPacketID: data.RequestId,
+			})
+		} else {
+			// This is an incoming traceroute request. The bridge answers on
+			// behalf of the managed destination; it is not surfaced as an event.
+			b.handleTracerouteRequest(reqCtx, rd)
+		}
 
 	case pb.PortNum_ROUTING_APP:
 		routing := &pb.Routing{}
@@ -426,46 +535,34 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 	}
 }
 
-// respondNodeInfoForManaged sends NodeInfo responses on behalf of all managed
-// nodes that pass the throttle check. This handles broadcast WantResponse
-// requests where all managed nodes should reply.
-func (b *BridgeNode) respondNodeInfoForManaged(requester uint32, requestID uint32) {
-	if b.cfg.NodeInfoForNode == nil {
-		return
+// respondNodeInfoForManaged answers a NodeInfo WantResponse request. The bridge
+// always replies as itself. If the request was a direct message to a specific
+// managed node, that node also replies. Each reply is throttled independently.
+func (b *BridgeNode) respondNodeInfoForManaged(evt event.Event) {
+	requester := evt.From.Uint32()
+	requestID := evt.PacketID
+
+	// Respond as the bridge itself.
+	if b.base.throttle.canRespond(b.cfg.NodeID, pb.PortNum_NODEINFO_APP) {
+		b.sendNodeInfoResponse(b.cfg.NodeID, requester, requestID)
 	}
 
-	// Respond as the bridge itself
-	if b.base.throttle.canRespond(core.NodeID(requester), pb.PortNum_NODEINFO_APP) {
-		b.sendNodeInfoResponse(b.cfg.NodeID, requester, requestID)
+	// Respond as the addressed managed node on a direct message.
+	to := evt.To
+	if !to.IsBroadcast() && to != b.cfg.NodeID && b.cfg.IsManagedNode(to) {
+		if b.base.throttle.canRespond(to, pb.PortNum_NODEINFO_APP) {
+			b.sendNodeInfoResponse(to, requester, requestID)
+		}
 	}
 }
 
 // sendNodeInfoResponse sends a NodeInfo response from the specified identity.
 func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, requestID uint32) {
-	var longName, shortName string
-	var pubKey []byte
-
-	if asNode == b.cfg.NodeID {
-		longName = b.cfg.LongName
-		shortName = b.cfg.ShortName
-		// Bridge's own public key not exposed via config; omit
-	} else if b.cfg.NodeInfoForNode != nil {
-		var ok bool
-		longName, shortName, pubKey, ok = b.cfg.NodeInfoForNode(asNode)
-		if !ok {
-			return
-		}
-	} else {
+	user := b.buildUserFor(asNode)
+	if user == nil {
 		return
 	}
 
-	user := &pb.User{
-		Id:        asNode.String(),
-		LongName:  longName,
-		ShortName: shortName,
-		HwModel:   b.cfg.HwModel,
-		PublicKey: pubKey,
-	}
 	userBytes, err := proto.Marshal(user)
 	if err != nil {
 		b.base.log.Error("failed to marshal NodeInfo", "error", err)
@@ -483,6 +580,7 @@ func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, request
 			},
 		},
 	}
+	b.adjustHopForRelay(pkt, asNode)
 	if err := b.base.sendPacket(context.Background(), pkt, ""); err != nil {
 		b.base.log.Error("failed to send NodeInfo response", "as", asNode, "to", core.NodeID(to), "error", err)
 	} else {
@@ -490,36 +588,58 @@ func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, request
 	}
 }
 
-// SendTextAs sends a text message from a managed node.
-func (b *BridgeNode) SendTextAs(ctx context.Context, from, to core.NodeID, message string, opts ...SendOption) error {
-	if len(message) > core.MaxDataPayload {
-		return fmt.Errorf("message too large: %d bytes exceeds max %d", len(message), core.MaxDataPayload)
-	}
-	if !b.cfg.IsManagedNode(from) {
-		return fmt.Errorf("node %s is not managed by this bridge", from)
+// buildUserFor constructs the NodeInfo User for a managed identity. The bridge
+// itself reports CLIENT_BASE and is flagged unmessagable; other managed nodes
+// report CLIENT_MUTE. Names and public key come from the NodeInfoForNode
+// callback for non-bridge identities. Returns nil if no info is available.
+func (b *BridgeNode) buildUserFor(asNode core.NodeID) *pb.User {
+	var longName, shortName string
+	var pubKey []byte
+
+	if asNode == b.cfg.NodeID {
+		longName = b.cfg.LongName
+		shortName = b.cfg.ShortName
+		// Bridge's own public key is not exposed via config; omit.
+	} else if b.cfg.NodeInfoForNode != nil {
+		var ok bool
+		longName, shortName, pubKey, ok = b.cfg.NodeInfoForNode(asNode)
+		if !ok {
+			return nil
+		}
+	} else {
+		return nil
 	}
 
+	user := &pb.User{
+		Id:        asNode.String(),
+		LongName:  longName,
+		ShortName: shortName,
+		HwModel:   b.cfg.HwModel,
+		Macaddr:   asNode.MacBytes(),
+		PublicKey: pubKey,
+		Role:      pb.Config_DeviceConfig_CLIENT_MUTE,
+	}
+	if asNode == b.cfg.NodeID {
+		user.Role = pb.Config_DeviceConfig_CLIENT_BASE
+		t := true
+		user.IsUnmessagable = &t
+	}
+	return user
+}
+
+// SendTextAs sends a text message from a managed node and returns the packet ID.
+func (b *BridgeNode) SendTextAs(ctx context.Context, from, to core.NodeID, message string, opts ...SendOption) (uint32, error) {
 	o := applySendOptions(opts)
-
-	data := &pb.Data{
-		Portnum: pb.PortNum_TEXT_MESSAGE_APP,
-		Payload: []byte(message),
-		ReplyId: o.replyID,
-		Emoji:   o.emoji,
-	}
-
-	if o.usePKI {
-		return b.SendDataAs(ctx, from, to, data, true)
-	}
-
-	pkt := &pb.MeshPacket{
-		From:           from.Uint32(),
-		To:             to.Uint32(),
-		WantAck:        o.wantAck,
-		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
-	}
-	b.adjustHopForRelay(pkt, from)
-	return b.base.sendPacket(ctx, pkt, o.channel)
+	return b.sendAs(ctx, bridgeSend{
+		from: from, to: to,
+		portnum: pb.PortNum_TEXT_MESSAGE_APP,
+		payload: []byte(message),
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel,
+		replyID: o.replyID,
+		emoji:   o.emoji,
+		wantAck: o.wantAck,
+	})
 }
 
 // SendDataAs sends a data payload from a managed node. If usePKI is true and
@@ -579,45 +699,28 @@ func (b *BridgeNode) SendAckAs(ctx context.Context, from, to core.NodeID, packet
 	return b.base.sendPacket(ctx, pkt, "")
 }
 
-// SendNodeInfoAs broadcasts a NodeInfo packet from a managed node.
-func (b *BridgeNode) SendNodeInfoAs(ctx context.Context, from core.NodeID, to core.NodeID) error {
-	if !b.cfg.IsManagedNode(from) {
-		return fmt.Errorf("node %s is not managed by this bridge", from)
-	}
-	if b.cfg.NodeInfoForNode == nil {
-		return fmt.Errorf("NodeInfoForNode callback not configured")
-	}
-
-	longName, shortName, pubKey, ok := b.cfg.NodeInfoForNode(from)
-	if !ok {
-		return fmt.Errorf("no NodeInfo available for %s", from)
-	}
-
-	user := &pb.User{
-		Id:        from.String(),
-		LongName:  longName,
-		ShortName: shortName,
-		HwModel:   b.cfg.HwModel,
-		PublicKey: pubKey,
+// SendNodeInfoAs sends a NodeInfo packet from a managed node. Pass
+// WithWantResponse to request the recipient's NodeInfo in return (used to
+// discover unknown nodes). Returns the generated packet ID.
+func (b *BridgeNode) SendNodeInfoAs(ctx context.Context, from, to core.NodeID, opts ...SendOption) (uint32, error) {
+	user := b.buildUserFor(from)
+	if user == nil {
+		return 0, fmt.Errorf("no NodeInfo available for %s", from)
 	}
 	userBytes, err := proto.Marshal(user)
 	if err != nil {
-		return fmt.Errorf("marshalling user: %w", err)
+		return 0, fmt.Errorf("marshalling user: %w", err)
 	}
 
-	pkt := &pb.MeshPacket{
-		From:     from.Uint32(),
-		To:       to.Uint32(),
-		Priority: pb.MeshPacket_BACKGROUND,
-		PayloadVariant: &pb.MeshPacket_Decoded{
-			Decoded: &pb.Data{
-				Portnum: pb.PortNum_NODEINFO_APP,
-				Payload: userBytes,
-			},
-		},
-	}
-	b.adjustHopForRelay(pkt, from)
-	return b.base.sendPacket(ctx, pkt, "")
+	o := applySendOptions(opts)
+	return b.sendAs(ctx, bridgeSend{
+		from: from, to: to,
+		portnum:      pb.PortNum_NODEINFO_APP,
+		payload:      userBytes,
+		enc:          encModeFor(o.usePKI),
+		channel:      o.channel,
+		wantResponse: o.wantResponse,
+	})
 }
 
 // sendPKIPacketAs sends a PKI-encrypted packet from a managed node.

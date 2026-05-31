@@ -102,10 +102,10 @@ func (c *Config) validate() error {
 		c.HwModel = pb.HardwareModel_PRIVATE_HW
 	}
 	if c.DefaultHopLimit == 0 {
-		c.DefaultHopLimit = 3
+		c.DefaultHopLimit = core.DefaultHopLimit
 	}
-	if c.DefaultHopLimit > 7 {
-		c.DefaultHopLimit = 7
+	if c.DefaultHopLimit > core.MaxHops {
+		c.DefaultHopLimit = core.MaxHops
 	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()

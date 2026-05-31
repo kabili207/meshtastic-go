@@ -18,13 +18,13 @@ const (
 	BroadcastNodeID NodeID = math.MaxUint32
 
 	// BroadcastNodeIDNoLora is a special broadcast address that excludes LoRa transmission.
-	// Used for MQTT-only broadcasts. This is ^all with the NO_LORA flag (0x40) cleared.
-	BroadcastNodeIDNoLora NodeID = math.MaxUint32 ^ 0x40
+	// Used for MQTT-only broadcasts.
+	BroadcastNodeIDNoLora NodeID = 1
 
 	// ReservedNodeIDThreshold is the threshold at which NodeIDs are considered reserved. Random NodeIDs should not
 	// be generated below this threshold.
 	// Source: https://github.com/meshtastic/firmware/blob/d1ea58975755e146457a8345065e4ca357555275/src/mesh/NodeDB.cpp#L461
-	reservedNodeIDThreshold NodeID = 4
+	ReservedNodeIDThreshold NodeID = 4
 )
 
 // Uint32 returns the underlying uint32 value of the NodeID.
@@ -227,4 +227,12 @@ func (n NodeID) ToMacAddress() string {
 	// Use 0x02 as the first octet (locally administered, unicast)
 	// Then 0x00 as padding, followed by the 4 bytes of the NodeID
 	return fmt.Sprintf("02:00:%02x:%02x:%02x:%02x", bytes[0], bytes[1], bytes[2], bytes[3])
+}
+
+// MacBytes returns the 6-byte MAC address used in NodeInfo broadcasts. The
+// first octet is 0x0A (locally administered, unicast), followed by a zero pad
+// and the four big-endian NodeID bytes.
+func (n NodeID) MacBytes() []byte {
+	b := n.Bytes()
+	return []byte{0x0A, 0x00, b[0], b[1], b[2], b[3]}
 }

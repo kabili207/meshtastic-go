@@ -36,6 +36,20 @@ type Event struct {
 	// ManagedNodeID is set when the packet was addressed to a specific managed
 	// node (in a BridgeNode context). Zero for Node or broadcast packets.
 	ManagedNodeID core.NodeID
+	// Via is the gateway node that delivered this packet. For MQTT it is the
+	// gateway ID; for radio/UDP it is derived from the relay node, falling back
+	// to the sender when the packet arrived directly.
+	Via core.NodeID
+	// IsNeighbor is true when the packet was received directly (not via MQTT)
+	// with no intervening hops, indicating the sender is a radio neighbor.
+	IsNeighbor bool
+	// ChannelKey is the base64 channel key the packet was decrypted with, for
+	// PSK channels. Nil for PKI-encrypted or already-decoded packets.
+	ChannelKey *string
+	// WantAck is true if the sender requested a delivery acknowledgement.
+	WantAck bool
+	// WantResponse is true if the sender requested an application-level response.
+	WantResponse bool
 }
 
 // NodeInfoUpdated is emitted when a NODEINFO_APP packet is processed.
@@ -100,6 +114,9 @@ type TracerouteReceived struct {
 	RouteDiscovery *pb.RouteDiscovery
 	// IsRequest is true for traceroute requests, false for responses.
 	IsRequest bool
+	// OriginalPacketID is the request packet ID a response is replying to, or 0
+	// for requests. Used to correlate responses with outstanding requests.
+	OriginalPacketID uint32
 }
 
 // RoutingReceived is emitted when a ROUTING_APP packet is processed.

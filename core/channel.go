@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/base64"
+	"sync"
 
 	"github.com/kabili207/meshtastic-go/core/crypto"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
@@ -88,8 +89,11 @@ func ChannelFromSettings(settings *pb.ChannelSettings) *Channel {
 }
 
 // ChannelRegistry maintains a mapping of channel hashes to channel definitions.
-// This is useful for looking up channel names from packet hashes.
+// This is useful for looking up channel names from packet hashes. It is safe
+// for concurrent use, since channels can be added at runtime while the receive
+// path performs lookups.
 type ChannelRegistry struct {
+	mu       sync.RWMutex
 	channels map[uint32]ChannelDef
 }
 
@@ -102,17 +106,23 @@ func NewChannelRegistry() *ChannelRegistry {
 
 // Register adds a channel to the registry.
 func (r *ChannelRegistry) Register(ch ChannelDef) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.channels[ch.GetHash()] = ch
 }
 
 // Lookup finds a channel by its hash.
 func (r *ChannelRegistry) Lookup(hash uint32) (ChannelDef, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	ch, ok := r.channels[hash]
 	return ch, ok
 }
 
 // LookupName returns the channel name for a hash, or empty string if not found.
 func (r *ChannelRegistry) LookupName(hash uint32) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if ch, ok := r.channels[hash]; ok {
 		return ch.GetName()
 	}
@@ -121,6 +131,8 @@ func (r *ChannelRegistry) LookupName(hash uint32) string {
 
 // LookupByName finds a channel by its name.
 func (r *ChannelRegistry) LookupByName(name string) (ChannelDef, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	for _, ch := range r.channels {
 		if ch.GetName() == name {
 			return ch, true
@@ -131,6 +143,8 @@ func (r *ChannelRegistry) LookupByName(name string) (ChannelDef, bool) {
 
 // All returns all registered channels.
 func (r *ChannelRegistry) All() []ChannelDef {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	result := make([]ChannelDef, 0, len(r.channels))
 	for _, ch := range r.channels {
 		result = append(result, ch)

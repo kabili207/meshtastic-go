@@ -8,6 +8,7 @@ require (
 	github.com/dave/jennifer v1.7.1
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-git/go-git/v6 v6.0.0-20260206150416-f623c7555599
+	github.com/iancoleman/strcase v0.3.0
 	github.com/pion/dtls/v3 v3.0.6
 	github.com/stretchr/testify v1.11.1
 	go.bug.st/serial v1.6.4

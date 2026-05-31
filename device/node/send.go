@@ -13,11 +13,13 @@ import (
 type SendOption func(*sendOptions)
 
 type sendOptions struct {
-	replyID  uint32
-	emoji    uint32
-	wantAck  bool
-	usePKI   bool
-	channel  string
+	replyID      uint32
+	emoji        uint32
+	wantAck      bool
+	usePKI       bool
+	channel      string
+	wantResponse bool
+	requestID    uint32
 }
 
 // WithReplyID sets the reply ID, linking this message to a previous packet.
@@ -44,6 +46,17 @@ func WithPKI() SendOption {
 // WithChannel sends on a specific channel instead of the primary channel.
 func WithChannel(name string) SendOption {
 	return func(o *sendOptions) { o.channel = name }
+}
+
+// WithWantResponse requests an application-level response from the recipient.
+// Only honored by the firmware for NodeInfo/Position/Traceroute unicasts.
+func WithWantResponse() SendOption {
+	return func(o *sendOptions) { o.wantResponse = true }
+}
+
+// WithRequestID marks this packet as a response to the given request packet ID.
+func WithRequestID(id uint32) SendOption {
+	return func(o *sendOptions) { o.requestID = id }
 }
 
 // SendText sends a text message to the specified destination.
@@ -149,9 +162,9 @@ func (n *Node) SendNeighborInfo(ctx context.Context, neighbors []*pb.Neighbor) e
 	}
 
 	ni := &pb.NeighborInfo{
-		NodeId:           n.cfg.NodeID.Uint32(),
-		Neighbors:        filtered,
-		LastSentById:     n.cfg.NodeID.Uint32(),
+		NodeId:       n.cfg.NodeID.Uint32(),
+		Neighbors:    filtered,
+		LastSentById: n.cfg.NodeID.Uint32(),
 	}
 	niBytes, err := proto.Marshal(ni)
 	if err != nil {
@@ -197,13 +210,13 @@ func (n *Node) RequestTraceroute(ctx context.Context, to core.NodeID) error {
 // Map reports are sent unencrypted as broadcast packets.
 func (n *Node) SendMapReport(ctx context.Context) error {
 	mr := &pb.MapReport{
-		LongName:    n.cfg.LongName,
-		ShortName:   n.cfg.ShortName,
-		Role:        pb.Config_DeviceConfig_CLIENT_MUTE,
-		HwModel:     n.cfg.HwModel,
-		LatitudeI:   n.cfg.PositionLatitudeI,
-		LongitudeI:  n.cfg.PositionLongitudeI,
-		Altitude:    n.cfg.PositionAltitude,
+		LongName:   n.cfg.LongName,
+		ShortName:  n.cfg.ShortName,
+		Role:       pb.Config_DeviceConfig_CLIENT_MUTE,
+		HwModel:    n.cfg.HwModel,
+		LatitudeI:  n.cfg.PositionLatitudeI,
+		LongitudeI: n.cfg.PositionLongitudeI,
+		Altitude:   n.cfg.PositionAltitude,
 	}
 	mrBytes, err := proto.Marshal(mr)
 	if err != nil {
