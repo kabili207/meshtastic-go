@@ -30,6 +30,16 @@ func main() {
 	// This must be relative to the project root (which is core/)
 	protoInDir := "../protobufs/"
 
+	// Upstream's protos don't generate valid Go on their own, so build from a patched
+	// copy rather than mutating the submodule. See stageProtos.
+	staged, err := stageProtos(protoInDir)
+	if err != nil {
+		fmt.Printf("failed to stage protos: %s\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(staged)
+	protoInDir = staged
+
 	// Clean up any previous generated directory (protoc creates "generated" based on go_package)
 	os.RemoveAll("generated")
 
@@ -113,6 +123,71 @@ func moveGeneratedFiles(srcDir, dstDir string) error {
 
 		return nil
 	})
+}
+
+// protoPatch rewrites a single proto source before it reaches protoc.
+type protoPatch struct {
+	file string
+	old  string
+	new  string
+}
+
+// protoPatches works around upstream protos that generate Go which doesn't compile.
+// Drop entries here as they're fixed upstream; an entry that no longer applies is a
+// hard error rather than a silent no-op.
+//
+// admin.proto's AS3935_config and telemetry.proto's AS3935Config are distinct protobuf
+// names, so protoc accepts both, but protoc-gen-go mangles them to the same Go
+// identifier. Every generated file shares one package (go_package is identical across
+// upstream's protos), so the two collide and the package won't build.
+//
+// Renaming the message also renames it in the descriptor, but nothing observable moves:
+// a nested message field carries no type name on the wire, and the field itself keeps
+// its number (7) and its name (as3935_config), so both the binary and JSON encodings are
+// byte-identical to upstream. Only Any/type-URL lookups would notice, and nothing here
+// uses them.
+var protoPatches = []protoPatch{
+	{file: "meshtastic/admin.proto", old: "AS3935_config", new: "AS3935AdminConfig"},
+}
+
+// stageProtos copies the proto tree to a temporary directory and applies protoPatches
+// to the copy, leaving the submodule checkout untouched. Returns the staging directory.
+func stageProtos(srcDir string) (string, error) {
+	stageDir, err := os.MkdirTemp("", "meshtastic-protos-")
+	if err != nil {
+		return "", err
+	}
+
+	for _, src := range find(srcDir, ".proto") {
+		rel, err := filepath.Rel(srcDir, src)
+		if err != nil {
+			return "", err
+		}
+		content, err := os.ReadFile(src)
+		if err != nil {
+			return "", err
+		}
+
+		for _, p := range protoPatches {
+			if filepath.ToSlash(rel) != p.file {
+				continue
+			}
+			if !bytes.Contains(content, []byte(p.old)) {
+				return "", fmt.Errorf("patch for %s no longer applies: %q not found (fixed upstream? remove it)", p.file, p.old)
+			}
+			content = bytes.ReplaceAll(content, []byte(p.old), []byte(p.new))
+		}
+
+		dst := filepath.Join(stageDir, rel)
+		if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(dst, content, 0644); err != nil {
+			return "", err
+		}
+	}
+
+	return stageDir, nil
 }
 
 func find(root, ext string) []string {

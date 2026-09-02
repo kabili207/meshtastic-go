@@ -433,8 +433,8 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 		IsPKI:       isPKI,
 		RawData:     data,
 	}
-	if pkt.Packet.RxTime > 0 {
-		evt.Timestamp = time.Unix(int64(pkt.Packet.RxTime), 0)
+	if pkt.Packet.GetRxTime() > 0 {
+		evt.Timestamp = time.Unix(int64(pkt.Packet.GetRxTime()), 0)
 	}
 
 	from := pkt.Packet.From

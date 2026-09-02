@@ -125,8 +125,8 @@ func (b *baseNode) applyPacketDefaults(pkt *pb.MeshPacket) {
 	if pkt.Priority == pb.MeshPacket_UNSET {
 		pkt.Priority = lora.GetPriority(pkt.GetDecoded(), pkt.WantAck)
 	}
-	if pkt.RxTime == 0 {
-		pkt.RxTime = uint32(time.Now().Unix())
+	if pkt.RxTime == nil {
+		pkt.RxTime = proto.Uint32(uint32(time.Now().Unix()))
 	}
 	if pkt.RelayNode == 0 {
 		pkt.RelayNode = b.nodeID.Uint32() & 0xFF

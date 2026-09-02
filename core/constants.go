@@ -16,7 +16,9 @@ const (
 	MaxDataPayload = int(pb.Constants_DATA_PAYLOAD_LEN) - 1
 
 	// MaxLongName is the maximum byte length of a node's long name.
-	MaxLongName = 39
+	// Firmware 2.8 lowered this from 39; longer names still decode, but devices
+	// truncate them before storing or rebroadcasting.
+	MaxLongName = 24
 
 	// MaxShortName is the maximum byte length of a node's short name.
 	MaxShortName = 4
@@ -24,4 +26,7 @@ const (
 	// MaxNeighborsPerPacket is the maximum number of neighbors that can be
 	// included in a single NeighborInfo packet.
 	MaxNeighborsPerPacket = 10
+
+	// PublicKeySize is the byte length of a node's X25519 identity public key.
+	PublicKeySize = 32
 )

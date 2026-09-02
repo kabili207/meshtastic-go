@@ -88,7 +88,7 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 		From:      s.from.Uint32(),
 		To:        s.to.Uint32(),
 		WantAck:   wantAck,
-		RxTime:    uint32(time.Now().Unix()),
+		RxTime:    proto.Uint32(uint32(time.Now().Unix())),
 		Priority:  lora.GetPriority(data, wantAck),
 		RelayNode: b.cfg.NodeID.Uint32() & 0xFF,
 	}

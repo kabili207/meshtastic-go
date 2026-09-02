@@ -666,7 +666,7 @@ func TestEventTimestamp_UsesRxTime(t *testing.T) {
 		Packet: &pb.MeshPacket{
 			Id:     50,
 			From:   0xAA,
-			RxTime: rxTime,
+			RxTime: proto.Uint32(rxTime),
 			PayloadVariant: &pb.MeshPacket_Decoded{
 				Decoded: &pb.Data{
 					Portnum: pb.PortNum_TEXT_MESSAGE_APP,

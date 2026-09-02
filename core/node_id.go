@@ -4,10 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"math/big"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // NodeID holds the node identifier. This is a uint32 value which uniquely identifies a node within a mesh.
@@ -81,6 +83,34 @@ func RandomNodeID() (NodeID, error) {
 	}
 	r := uint32(randomInt.Uint64()) + ReservedNodeIDThreshold.Uint32()
 	return NodeID(r), nil
+}
+
+// NodeIDFromPublicKey derives a NodeID from a node's 32-byte X25519 identity public
+// key, matching the scheme firmware 2.8 introduced:
+//
+//	my_node_num = crc32Buffer(config.security.public_key.bytes, 32)
+//
+// Firmware's crc32Buffer comes from ErriezCRC32, which is CRC-32/IEEE, so it agrees
+// with crc32.ChecksumIEEE byte for byte.
+//
+// Earlier firmware derived the node number from the device MAC address. 2.8 keeps that
+// only as a bootstrap value, replacing it as soon as an identity keypair exists, so
+// prefer this for any node whose key is known. Like firmware, this does not re-roll a
+// result that lands in the reserved range; check IsReservedID if that matters.
+func NodeIDFromPublicKey(publicKey []byte) (NodeID, error) {
+	if len(publicKey) != PublicKeySize {
+		return 0, fmt.Errorf("public key must be %d bytes, got %d", PublicKeySize, len(publicKey))
+	}
+	return NodeID(crc32.ChecksumIEEE(publicKey)), nil
+}
+
+// MatchesPublicKey reports whether this NodeID is the one that would be derived from
+// publicKey. Firmware requires this to hold before accepting a first-contact NodeInfo
+// carrying its own key, so a sender cannot introduce itself under an ID it does not own.
+// Returns false for a malformed key.
+func (n NodeID) MatchesPublicKey(publicKey []byte) bool {
+	derived, err := NodeIDFromPublicKey(publicKey)
+	return err == nil && derived == n
 }
 
 // ParseNodeID parses a NodeID from various string formats:
@@ -188,7 +218,7 @@ func (n NodeID) GetNodeColor() string {
 	return fmt.Sprintf("#%02x%02x%02x", clamp(r), clamp(g), clamp(b))
 }
 
-// ValidateLongName truncates a long name to the firmware maximum of 39 bytes.
+// ValidateLongName truncates a long name to the firmware maximum of 24 bytes.
 // If the name is already within the limit it is returned unchanged.
 func ValidateLongName(name string) string {
 	return truncateToBytes(name, MaxLongName)
@@ -207,17 +237,18 @@ func truncateToBytes(s string, maxBytes int) string {
 	if len(s) <= maxBytes {
 		return s
 	}
-	// Trim back to avoid splitting a multi-byte rune.
-	b := []byte(s[:maxBytes])
-	for len(b) > 0 && b[len(b)-1]&0xC0 == 0x80 {
+	// Drop a trailing rune only when the cut actually split it. A multi-byte rune
+	// ending exactly on the boundary is complete and must be kept.
+	b := s[:maxBytes]
+	for len(b) > 0 {
+		// DecodeLastRuneInString reports (RuneError, 1) for an invalid encoding,
+		// which here means a partial sequence. A real U+FFFD decodes with size 3.
+		if r, size := utf8.DecodeLastRuneInString(b); r != utf8.RuneError || size > 1 {
+			break
+		}
 		b = b[:len(b)-1]
 	}
-	if len(b) > 0 && b[len(b)-1]&0x80 != 0 {
-		// The last byte is a leading byte of a multi-byte sequence that
-		// was truncated — remove it.
-		b = b[:len(b)-1]
-	}
-	return string(b)
+	return b
 }
 
 // ToMacAddress returns a MAC address string derived from the NodeID.

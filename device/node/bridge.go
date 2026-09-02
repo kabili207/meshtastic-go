@@ -377,8 +377,8 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		IsNeighbor: pkt.Source != transport.PacketSourceMQTT &&
 			pkt.Packet.HopStart == pkt.Packet.HopLimit && !pkt.Packet.ViaMqtt,
 	}
-	if pkt.Packet.RxTime > 0 {
-		evt.Timestamp = time.Unix(int64(pkt.Packet.RxTime), 0)
+	if pkt.Packet.GetRxTime() > 0 {
+		evt.Timestamp = time.Unix(int64(pkt.Packet.GetRxTime()), 0)
 	}
 
 	// reqCtx carries the raw-packet fields the request responders need.

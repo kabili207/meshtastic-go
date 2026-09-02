@@ -32,6 +32,22 @@ func MetersToPrecisionBits(meters float32) uint32 {
 	return 20 // finest granularity in the threshold table
 }
 
+// TruncateCoordinate reduces a latitude_i or longitude_i to the given number of
+// significant bits, returning the center of the resulting grid cell rather than its
+// low edge. Centering keeps the value stable under GPS jitter, so a stationary node
+// does not flip between adjacent cells.
+//
+// A precision of 0 or >= 32 returns the coordinate unchanged; callers that treat 0 as
+// "do not share position" must handle that before calling.
+func TruncateCoordinate(coordinate int32, precision uint32) int32 {
+	if precision == 0 || precision >= 32 {
+		return coordinate
+	}
+	truncated := uint32(coordinate) & (^uint32(0) << (32 - precision))
+	truncated += 1 << (31 - precision)
+	return int32(truncated)
+}
+
 var bitsToMeters = map[uint32]uint32{
 	2:  5976446,
 	3:  2988223,
