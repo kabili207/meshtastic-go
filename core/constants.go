@@ -1,6 +1,9 @@
 package core
 
-import pb "github.com/kabili207/meshtastic-go/core/proto"
+import (
+	"github.com/kabili207/meshtastic-go/core/crypto"
+	pb "github.com/kabili207/meshtastic-go/core/proto"
+)
 
 const (
 	// MaxHops is the firmware-enforced maximum number of hops a packet can traverse.
@@ -28,5 +31,5 @@ const (
 	MaxNeighborsPerPacket = 10
 
 	// PublicKeySize is the byte length of a node's X25519 identity public key.
-	PublicKeySize = 32
+	PublicKeySize = crypto.PublicKeySize
 )

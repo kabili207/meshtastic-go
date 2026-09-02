@@ -9,6 +9,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// PublicKeySize is the byte length of a node's X25519 identity key, public or private.
+const PublicKeySize = 32
+
 // DefaultKey is the default encryption key, commonly referenced as AQ==
 // as base64: 1PG7OiApB1nwvP+rz05pAQ==
 var DefaultKey = []byte{0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59, 0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01}

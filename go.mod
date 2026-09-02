@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.1
 
 require (
+	filippo.io/edwards25519 v1.2.0
 	github.com/dave/jennifer v1.7.1
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-git/go-git/v6 v6.0.0-20260206150416-f623c7555599
