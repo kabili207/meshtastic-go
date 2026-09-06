@@ -209,3 +209,49 @@ func TestBridgeRefusesNodeInfoWithMismatchedIdentity(t *testing.T) {
 		t.Fatalf("sent %d packets, want 1", mt.sentCount())
 	}
 }
+
+func TestBridgeSendWaypointAs(t *testing.T) {
+	mt := newMockTransport()
+	b := newTestBridge(t, mt)
+
+	wp := &pb.Waypoint{
+		Id:             7,
+		Name:           "Camp",
+		LatitudeI:      proto.Int32(476226196),
+		LongitudeI:     proto.Int32(-1223981600),
+		GeofenceRadius: 250,
+		BoundingBox: &pb.BoundingBox{
+			LongitudeWestI: -1224000000,
+			LatitudeSouthI: 476000000,
+			LongitudeEastI: -1223900000,
+			LatitudeNorthI: 476400000,
+		},
+	}
+	id, err := b.SendWaypointAs(context.Background(), b.cfg.NodeID, core.BroadcastNodeID, wp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := mt.lastSent().packet
+	if sent.Id != id {
+		t.Errorf("returned id %d, sent packet id %d", id, sent.Id)
+	}
+	data, err := crypto.TryDecode(sent, crypto.DefaultKey)
+	if err != nil {
+		t.Fatalf("decrypting sent packet: %v", err)
+	}
+	if data.Portnum != pb.PortNum_WAYPOINT_APP {
+		t.Fatalf("portnum = %v, want WAYPOINT_APP", data.Portnum)
+	}
+	var got pb.Waypoint
+	if err := proto.Unmarshal(data.Payload, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Id != 7 || got.GeofenceRadius != 250 || got.BoundingBox == nil || got.BoundingBox.LatitudeNorthI != 476400000 {
+		t.Errorf("geofence fields did not survive the round trip: %v", &got)
+	}
+
+	if _, err := b.SendWaypointAs(context.Background(), b.cfg.NodeID, core.BroadcastNodeID,
+		&pb.Waypoint{Description: string(make([]byte, core.MaxDataPayload))}); err == nil {
+		t.Error("an oversized waypoint was sent")
+	}
+}

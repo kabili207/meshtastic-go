@@ -431,11 +431,36 @@ New `mesh_beacon.proto`, portnum `MESH_BEACON_APP = 37`,
 `AdminMessage.MESHBEACON_CONFIG = 16`. Needs an incoming handler and a
 `BeaconReceived` event to match the existing typed event set.
 
-### Waypoint geofencing
+### Waypoint geofencing (done)
 
 `Waypoint` gains `geofence_radius`, `bounding_box` (new `BoundingBox` message),
-`notify_on_enter`, `notify_on_exit`, and `notify_favorites_only`. Natural fit as
-new functional options on `SendWaypoint`.
+`notify_on_enter`, `notify_on_exit`, and `notify_favorites_only`.
+
+The plan's "functional options" turned out to be the wrong shape: `SendWaypoint`
+already takes a `*pb.Waypoint`, so the new fields were settable from the start.
+The actual gaps were that the bridge had no waypoint send at all, and that nothing
+could answer "is this position inside that waypoint's geofence" the way a node
+would. `BridgeNode.SendWaypointAs` fills the first. `core.WaypointHasGeofence`,
+`core.WaypointContains`, and `core.DistanceMeters` fill the second, ported from
+firmware's `GeofenceModule`: a point counts if it is within the radius of the
+waypoint's own position or inside the box, both edges inclusive, and a radius on a
+waypoint with no position is not evaluated (firmware refuses to track that case).
+
+Two things worth knowing came out of reading the firmware.
+
+`MESHTASTIC_TRIG_APPROX` defaults to 1 in `configuration.h`, so every shipping
+target computes distance with an equirectangular approximation and a polynomial
+cosine on a 6366 km sphere. The Haversine form is only an opt-in override for
+polar use. `DistanceMeters` ports the approximation, not the exact formula, because
+matching the exact one would put points near the radius edge on the wrong side
+relative to real nodes. Cross-checked against the compiled C over eight pairs,
+including one straddling the antimeridian, compared exactly at float32.
+
+The three `notify_*` fields are receiver-local preferences. `WaypointStore` merges
+a received waypoint's flags only when it was authored locally, and clears them on
+the stored copy otherwise, so a 2.8 node ignores whatever a sender put on the wire.
+The library leaves them alone on send (the caller owns the proto) and documents it
+on `SendWaypointAs`.
 
 ---
 

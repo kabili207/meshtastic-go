@@ -292,6 +292,32 @@ func (b *BridgeNode) SendReactionAs(ctx context.Context, from, to core.NodeID, t
 	})
 }
 
+// SendWaypointAs sends a waypoint from a managed node. Returns the generated
+// packet ID.
+//
+// The notify_on_enter, notify_on_exit, and notify_favorites_only fields are
+// receiver-local preferences in firmware 2.8: a receiving node keeps its own
+// settings and ignores whatever a sender put on the wire. Set them only for
+// consumers that are not firmware.
+func (b *BridgeNode) SendWaypointAs(ctx context.Context, from, to core.NodeID, waypoint *pb.Waypoint, opts ...SendOption) (uint32, error) {
+	wpBytes, err := proto.Marshal(waypoint)
+	if err != nil {
+		return 0, fmt.Errorf("marshalling waypoint: %w", err)
+	}
+	if len(wpBytes) > core.MaxDataPayload {
+		return 0, fmt.Errorf("waypoint too large: %d bytes exceeds max %d", len(wpBytes), core.MaxDataPayload)
+	}
+	o := applySendOptions(opts)
+	return b.sendAs(ctx, bridgeSend{
+		from: from, to: to,
+		portnum: pb.PortNum_WAYPOINT_APP,
+		payload: wpBytes,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel,
+		wantAck: o.wantAck,
+	})
+}
+
 // SendNackAs sends a routing negative-acknowledgement from a managed node.
 func (b *BridgeNode) SendNackAs(ctx context.Context, from, to core.NodeID, packetID uint32) error {
 	routing := &pb.Routing{
