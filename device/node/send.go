@@ -147,6 +147,37 @@ func (n *Node) SendWaypoint(ctx context.Context, to core.NodeID, waypoint *pb.Wa
 	return n.base.sendPacket(ctx, pkt, o.channel)
 }
 
+// SendMeshBeacon broadcasts a beacon: a short advisory message and, optionally,
+// a channel, region, or preset being offered to listeners. A listening node
+// delivers the text to its inbox and caches the offer for its client app; it
+// never applies an offer itself. Beacons are always broadcast.
+//
+// Only nodes listening for beacons see the text: every 2.7 node, and any 2.8
+// node without FLAG_LISTEN_ENABLED, ignores it. Send a separate text message for
+// those, which is what firmware's FLAG_LEGACY_SPLIT does.
+func (n *Node) SendMeshBeacon(ctx context.Context, beacon *pb.MeshBeacon, opts ...SendOption) error {
+	if err := core.ValidateMeshBeacon(beacon); err != nil {
+		return err
+	}
+	payload, err := proto.Marshal(beacon)
+	if err != nil {
+		return fmt.Errorf("marshalling beacon: %w", err)
+	}
+	o := applySendOptions(opts)
+	pkt := &pb.MeshPacket{
+		From:    n.cfg.NodeID.Uint32(),
+		To:      core.BroadcastNodeID.Uint32(),
+		WantAck: o.wantAck,
+		PayloadVariant: &pb.MeshPacket_Decoded{
+			Decoded: &pb.Data{
+				Portnum: pb.PortNum_MESH_BEACON_APP,
+				Payload: payload,
+			},
+		},
+	}
+	return n.base.sendPacket(ctx, pkt, o.channel)
+}
+
 // SendNeighborInfo broadcasts neighbor information. The neighbor list is
 // automatically truncated to MaxNeighborsPerPacket and self-references are
 // filtered out.

@@ -858,3 +858,54 @@ func TestNodeIdentityBinding(t *testing.T) {
 		}
 	})
 }
+
+func TestMeshBeaconReceived(t *testing.T) {
+	inject := func(t *testing.T, beacon *pb.MeshBeacon) *event.MeshBeaconReceived {
+		t.Helper()
+		mt := newMockTransport()
+		var got *event.MeshBeaconReceived
+		n := newTestNode(t, mt, func(c *Config) {
+			c.EventHandlers = []event.Handler{func(evt any) {
+				if e, ok := evt.(*event.MeshBeaconReceived); ok {
+					got = e
+				}
+			}}
+		})
+		payload, _ := proto.Marshal(beacon)
+		inject(n, mt, transport.NetworkPacket{
+			Channel: "LongFast",
+			Packet: &pb.MeshPacket{
+				Id: 300, From: 0xAA, To: core.BroadcastNodeID.Uint32(),
+				PayloadVariant: &pb.MeshPacket_Decoded{Decoded: &pb.Data{Portnum: pb.PortNum_MESH_BEACON_APP, Payload: payload}},
+			},
+		})
+		return got
+	}
+
+	preset := pb.Config_LoRaConfig_LONG_FAST
+	t.Run("text with an offer", func(t *testing.T) {
+		got := inject(t, &pb.MeshBeacon{Message: "Welcome", OfferRegion: pb.Config_LoRaConfig_US, OfferPreset: &preset})
+		if got == nil {
+			t.Fatal("no event")
+		}
+		if got.Beacon.Message != "Welcome" || !got.HasOffer {
+			t.Errorf("event = %+v, want message and HasOffer", got)
+		}
+		if got.Portnum != pb.PortNum_MESH_BEACON_APP {
+			t.Errorf("portnum = %v", got.Portnum)
+		}
+	})
+
+	t.Run("text only", func(t *testing.T) {
+		got := inject(t, &pb.MeshBeacon{Message: "Just text"})
+		if got == nil || got.HasOffer {
+			t.Errorf("event = %+v, want text-only beacon without an offer", got)
+		}
+	})
+
+	t.Run("neither text nor offer is not emitted", func(t *testing.T) {
+		if got := inject(t, &pb.MeshBeacon{}); got != nil {
+			t.Errorf("an empty beacon produced an event: %+v", got)
+		}
+	})
+}

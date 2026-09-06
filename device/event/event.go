@@ -97,6 +97,19 @@ type WaypointReceived struct {
 	IsDelete bool
 }
 
+// MeshBeaconReceived is emitted when a MESH_BEACON_APP packet is processed. A
+// beacon is an advisory broadcast, not a personal message: firmware shows its
+// text without treating it as a TextMessage, and caches any offered channel,
+// region, or preset for the client app to act on without ever applying it.
+// A beacon with neither text nor an offer is not emitted.
+type MeshBeaconReceived struct {
+	Event
+	// Beacon is the decoded beacon.
+	Beacon *pb.MeshBeacon
+	// HasOffer is true if the beacon advertises a channel, region, or preset.
+	HasOffer bool
+}
+
 // NeighborInfoReceived is emitted when a NEIGHBORINFO_APP packet is processed.
 type NeighborInfoReceived struct {
 	Event

@@ -38,4 +38,13 @@ const (
 
 	// LoraHeaderLength is the size of the unencrypted packet header on the air.
 	LoraHeaderLength = 16
+
+	// MaxChannelName is the maximum byte length of a channel name.
+	MaxChannelName = 11
+
+	// MaxChannelPSK is the maximum byte length of a channel pre-shared key.
+	MaxChannelPSK = 32
+
+	// MaxMeshBeaconMessage is the maximum byte length of a beacon's text.
+	MaxMeshBeaconMessage = 100
 )

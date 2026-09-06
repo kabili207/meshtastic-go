@@ -318,6 +318,28 @@ func (b *BridgeNode) SendWaypointAs(ctx context.Context, from, to core.NodeID, w
 	})
 }
 
+// SendMeshBeaconAs broadcasts a beacon from a managed node. See
+// Node.SendMeshBeacon for what a beacon is and who can see it. Returns the
+// generated packet ID.
+func (b *BridgeNode) SendMeshBeaconAs(ctx context.Context, from core.NodeID, beacon *pb.MeshBeacon, opts ...SendOption) (uint32, error) {
+	if err := core.ValidateMeshBeacon(beacon); err != nil {
+		return 0, err
+	}
+	payload, err := proto.Marshal(beacon)
+	if err != nil {
+		return 0, fmt.Errorf("marshalling beacon: %w", err)
+	}
+	o := applySendOptions(opts)
+	return b.sendAs(ctx, bridgeSend{
+		from: from, to: core.BroadcastNodeID,
+		portnum: pb.PortNum_MESH_BEACON_APP,
+		payload: payload,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel,
+		wantAck: o.wantAck,
+	})
+}
+
 // SendNackAs sends a routing negative-acknowledgement from a managed node.
 func (b *BridgeNode) SendNackAs(ctx context.Context, from, to core.NodeID, packetID uint32) error {
 	routing := &pb.Routing{

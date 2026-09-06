@@ -556,6 +556,18 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 		isDelete := wp.Expire > 0 && time.Unix(int64(wp.Expire), 0).Before(time.Now())
 		n.base.emitEvent(&event.WaypointReceived{Event: evt, Waypoint: wp, IsDelete: isDelete})
 
+	case pb.PortNum_MESH_BEACON_APP:
+		beacon := &pb.MeshBeacon{}
+		if err := proto.Unmarshal(data.Payload, beacon); err != nil {
+			n.base.log.Debug("failed to unmarshal MeshBeacon", "error", err)
+			return
+		}
+		hasOffer := core.MeshBeaconHasOffer(beacon)
+		if beacon.Message == "" && !hasOffer {
+			return // nothing to act on, and firmware does not either
+		}
+		n.base.emitEvent(&event.MeshBeaconReceived{Event: evt, Beacon: beacon, HasOffer: hasOffer})
+
 	case pb.PortNum_NEIGHBORINFO_APP:
 		ni := &pb.NeighborInfo{}
 		if err := proto.Unmarshal(data.Payload, ni); err != nil {

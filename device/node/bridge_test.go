@@ -255,3 +255,40 @@ func TestBridgeSendWaypointAs(t *testing.T) {
 		t.Error("an oversized waypoint was sent")
 	}
 }
+
+func TestBridgeSendMeshBeaconAs(t *testing.T) {
+	mt := newMockTransport()
+	b := newTestBridge(t, mt)
+
+	beacon := &pb.MeshBeacon{
+		Message:      "Camp mesh here",
+		OfferChannel: &pb.ChannelSettings{Name: "Camp", Psk: crypto.DefaultKey},
+		OfferRegion:  pb.Config_LoRaConfig_US,
+	}
+	id, err := b.SendMeshBeaconAs(context.Background(), b.cfg.NodeID, beacon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := mt.lastSent().packet
+	if sent.Id != id || sent.To != core.BroadcastNodeID.Uint32() {
+		t.Errorf("sent id=%d to=%#x, want id=%d broadcast", sent.Id, sent.To, id)
+	}
+	data, err := crypto.TryDecode(sent, crypto.DefaultKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Portnum != pb.PortNum_MESH_BEACON_APP {
+		t.Fatalf("portnum = %v, want MESH_BEACON_APP", data.Portnum)
+	}
+	var got pb.MeshBeacon
+	if err := proto.Unmarshal(data.Payload, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != beacon.Message || got.OfferChannel.GetName() != "Camp" || got.OfferRegion != pb.Config_LoRaConfig_US {
+		t.Errorf("beacon did not survive the round trip: %v", &got)
+	}
+
+	if _, err := b.SendMeshBeaconAs(context.Background(), b.cfg.NodeID, &pb.MeshBeacon{}); err == nil {
+		t.Error("an empty beacon was sent")
+	}
+}

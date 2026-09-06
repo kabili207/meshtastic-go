@@ -18,7 +18,7 @@ Work is on branch `feature/protobufs-2.8`, branched from `main`.
 | 2. Identity from public key | Done |
 | 3. XEdDSA signing | Done |
 | 4. Position precision clamping | Done |
-| 5. Features and hardening | UDP, MQTT hardening, channel tracking done; region presets, MeshBeacon, geofences remain |
+| 5. Features and hardening | Done except region presets in the client handshake |
 
 Build, vet, and the full test suite pass against protobufs v2.8.0.
 
@@ -424,12 +424,37 @@ metadata -> STATE_SEND_REGION_PRESETS -> channels -> config -> moduleconfig
 Our `device/clientapi/server.go` already follows that sequence, so this is a clean
 insertion. The source table is `getRegionPresetMap()` at `RadioInterface.cpp:688`.
 
-### MeshBeacon
+### MeshBeacon (done)
 
 New `mesh_beacon.proto`, portnum `MESH_BEACON_APP = 37`,
 `ModuleConfig.MeshBeaconConfig` with broadcast targets, and
-`AdminMessage.MESHBEACON_CONFIG = 16`. Needs an incoming handler and a
-`BeaconReceived` event to match the existing typed event set.
+`AdminMessage.MESHBEACON_CONFIG = 16`.
+
+Both pipelines now handle `MESH_BEACON_APP` and emit `event.MeshBeaconReceived`,
+and both node types can send one (`Node.SendMeshBeacon`,
+`BridgeNode.SendMeshBeaconAs`), always as a broadcast. `core.ValidateMeshBeacon`
+and `core.MeshBeaconHasOffer` back both.
+
+The receive shape follows `MeshBeaconListenerModule` closely. A beacon is an
+advisory broadcast, not a personal message: firmware deliberately does not
+synthesize a `TEXT_MESSAGE_APP` from the text, and does not fire the
+received-message event that wakes a device. So the library emits its own event
+type rather than a `TextMessage`, and consumers decide what to do with the text.
+An offer (channel, region, or preset) is cached by firmware for the client app and
+never applied; `HasOffer` mirrors that classification. A beacon with neither text
+nor an offer is not emitted, which is where firmware stops acting on one too.
+
+Limits are 100 bytes of message, 11 of offered channel name, and 32 of PSK. They
+matter more than usual: a receiving node decodes into fixed-size buffers, so an
+over-long field is not truncated, the whole beacon fails to decode and is dropped.
+`ValidateMeshBeacon` refuses those before a send.
+
+Not modeled: the listener's `FLAG_LISTEN_ENABLED` gate (we always emit), the
+broadcaster's periodic schedule and multi-target radio switching (device
+behavior), and `FLAG_LEGACY_SPLIT`, which sends a second plain text packet so
+non-listening nodes see the message. A consumer wanting the split sends a text
+message alongside the beacon. Every 2.7 node is a non-listener, so on a mixed
+fleet the split is the only way the text is seen at all.
 
 ### Waypoint geofencing (done)
 
