@@ -492,3 +492,14 @@ its own review.
 3. **Signing default.** Resolved: `COMPATIBLE`. It is the firmware wire default and
    the enum's zero value, so a zero-valued config field means it without ceremony.
    Callers opt into `BALANCED` or `STRICT`.
+4. **Channel identity is name-only in too many places.** `WithChannel` and
+   `ChannelRegistry.LookupByName` resolve a channel by name, so two registered
+   channels that share a name with different PSKs (a real case for a bridge with
+   one portal per name-and-key) pick one arbitrarily. Traceroute from the bridge is
+   the visible symptom. The per-node channel tracking above is also keyed on an
+   index into a name list, and runtime `AddChannel` appends to it, so the index a
+   node is stored under depends on registration order. Both want the same fix: a
+   channel handle that carries name and key (or the hash) end to end, with the
+   per-node record storing that instead of a list index. Channel indexing was a
+   pain point in early bridge versions too, so expect this to be a redo rather than
+   a patch.
