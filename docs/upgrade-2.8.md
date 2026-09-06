@@ -328,6 +328,27 @@ are now dropped by identity rather than relying on dedup.
 `TRANSPORT_UNICAST_UDP = 8` is defined in the proto but nothing in firmware 2.8
 sets or reads it. Nothing to do.
 
+### Per-node channel tracking (done)
+
+Not a 2.8 change, but a firmware behavior the library was missing, found while
+tracing how firmware picks a channel for a unicast. A node never learns a peer's
+primary channel: the wire carries only a one-byte hash of name and PSK, and on a
+successful decrypt firmware overwrites it with the receiver's local index. What
+firmware does remember, in `NodeDB::updateUser`, is the local index it last heard
+that node's NodeInfo on, and `getEffectiveChannelIndex` uses it for any unicast
+with no channel set.
+
+The library now does the same. Both NodeInfo receive sites store the local index in
+`NodeInfo.Channel` (the field phones read, and 0 already means primary). Both send
+paths, `baseNode.sendPacket` and the bridge's own resolver, fall back to that
+channel for a unicast with no explicit channel. Broadcasts, PKI sends, an explicit
+`WithChannel`, and nodes never heard from all still use the primary. A NodeInfo
+that arrived PKI-encrypted reports the "PKI" pseudo-channel, which is not a
+configured index and is not stored.
+
+The transport-agnostic `nodedb.ProcessPacket` only has a PSK, not a name, so it
+cannot resolve an index and is unchanged.
+
 ### MQTT downlink hardening
 
 Firmware now forces `pki_encrypted = false` on every MQTT downlink, on the grounds

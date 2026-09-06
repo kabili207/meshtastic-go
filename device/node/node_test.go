@@ -717,3 +717,98 @@ func TestSelfOriginPacketDropped(t *testing.T) {
 		t.Errorf("a packet claiming our own ID produced an event: %q", got.Message)
 	}
 }
+
+// A unicast with no channel specified goes out on the channel we last heard the
+// destination's NodeInfo on, the way firmware's getEffectiveChannelIndex works.
+func TestDMUsesChannelNodeInfoArrivedOn(t *testing.T) {
+	mt := newMockTransport()
+	secondKey := make([]byte, 16)
+	copy(secondKey, crypto.DefaultKey)
+	secondKey[15] = 0x42
+	n := newTestNode(t, mt, func(c *Config) {
+		c.Channels = &pb.ChannelSet{
+			Settings: []*pb.ChannelSettings{
+				{Name: "LongFast", Psk: crypto.DefaultKey},
+				{Name: "SecondCh", Psk: secondKey},
+			},
+		}
+	})
+
+	userBytes, _ := proto.Marshal(&pb.User{LongName: "Peer"})
+	inject(n, mt, transport.NetworkPacket{
+		Channel: "SecondCh",
+		Packet: &pb.MeshPacket{
+			Id:   7,
+			From: 0xAA,
+			PayloadVariant: &pb.MeshPacket_Decoded{
+				Decoded: &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes},
+			},
+		},
+	})
+
+	if info := n.NodeDB().Get(0xAA); info == nil || info.Channel != 1 {
+		t.Fatalf("nodedb channel index = %v, want 1", info)
+	}
+
+	if err := n.SendText(context.Background(), 0xAA, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := mt.lastSent().channel; got != "SecondCh" {
+		t.Errorf("DM went out on %q, want SecondCh", got)
+	}
+}
+
+func TestDMChannelFallbacks(t *testing.T) {
+	mt := newMockTransport()
+	secondKey := make([]byte, 16)
+	copy(secondKey, crypto.DefaultKey)
+	secondKey[15] = 0x42
+	n := newTestNode(t, mt, func(c *Config) {
+		c.Channels = &pb.ChannelSet{
+			Settings: []*pb.ChannelSettings{
+				{Name: "LongFast", Psk: crypto.DefaultKey},
+				{Name: "SecondCh", Psk: secondKey},
+			},
+		}
+	})
+	n.NodeDB().Update(0xAA, func(info *pb.NodeInfo) { info.Channel = 1 })
+
+	t.Run("broadcast ignores the nodedb", func(t *testing.T) {
+		if err := n.SendText(context.Background(), core.BroadcastNodeID, "all"); err != nil {
+			t.Fatal(err)
+		}
+		if got := mt.lastSent().channel; got != "LongFast" {
+			t.Errorf("broadcast went out on %q, want LongFast", got)
+		}
+	})
+
+	t.Run("explicit channel wins", func(t *testing.T) {
+		if err := n.SendText(context.Background(), 0xAA, "hi", WithChannel("LongFast")); err != nil {
+			t.Fatal(err)
+		}
+		if got := mt.lastSent().channel; got != "LongFast" {
+			t.Errorf("explicit channel was overridden to %q", got)
+		}
+	})
+
+	t.Run("unknown node uses the primary", func(t *testing.T) {
+		if err := n.SendText(context.Background(), 0xBB, "hi"); err != nil {
+			t.Fatal(err)
+		}
+		if got := mt.lastSent().channel; got != "LongFast" {
+			t.Errorf("unknown node went out on %q, want LongFast", got)
+		}
+	})
+}
+
+// A PKI-decrypted NodeInfo arrives on the "PKI" pseudo-channel, which is not a
+// configured channel and must not be stored as an index.
+func TestNodeInfoOnPKIDoesNotStoreChannel(t *testing.T) {
+	mt := newMockTransport()
+	n := newTestNode(t, mt)
+	n.NodeDB().Update(0xAA, func(info *pb.NodeInfo) { info.Channel = 0 })
+
+	if _, ok := n.base.channelIndex("PKI"); ok {
+		t.Fatal("PKI resolved to a channel index")
+	}
+}

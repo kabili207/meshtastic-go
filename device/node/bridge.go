@@ -171,6 +171,7 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 			okToMQTT:       cfg.OkToMQTT,
 			hopLimit:       cfg.DefaultHopLimit,
 			primaryChannel: cfg.Channels.Settings[0].Name,
+			channelNames:   channelNamesFrom(cfg.Channels),
 		},
 		cfg: cfg,
 	}
@@ -187,6 +188,7 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 		ShortName: cfg.ShortName,
 		Logger:    cfg.Logger,
 	})
+	b.base.db = b.db
 
 	return b, nil
 }
@@ -404,7 +406,13 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			b.base.log.Debug("failed to unmarshal NodeInfo", "error", err)
 			return
 		}
-		b.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
+		b.db.Update(from, func(info *pb.NodeInfo) {
+			info.User = user
+			// Remember which of our channels this node is reachable on.
+			if idx, ok := b.base.channelIndex(channelName); ok {
+				info.Channel = idx
+			}
+		})
 		b.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
 
 		// Auto-respond to NodeInfo WantResponse on behalf of managed nodes

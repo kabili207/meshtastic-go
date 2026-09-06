@@ -96,7 +96,7 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 
 	channelName := s.channel
 	if channelName == "" {
-		channelName = b.base.primaryChannel
+		channelName = b.base.channelForDestination(s.to, s.enc == EncryptPKI)
 	}
 
 	switch s.enc {

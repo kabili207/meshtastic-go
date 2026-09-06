@@ -152,6 +152,7 @@ func New(cfg Config) (*Node, error) {
 			okToMQTT:       cfg.OkToMQTT,
 			hopLimit:       cfg.DefaultHopLimit,
 			primaryChannel: cfg.Channels.Settings[0].Name,
+			channelNames:   channelNamesFrom(cfg.Channels),
 		},
 		cfg: cfg,
 	}
@@ -168,6 +169,7 @@ func New(cfg Config) (*Node, error) {
 		ShortName: cfg.ShortName,
 		Logger:    cfg.Logger,
 	})
+	n.base.db = n.db
 
 	// Create broadcast scheduler — Node methods handle packet construction
 	n.scheduler = broadcast.New(broadcast.Config{
@@ -453,7 +455,13 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 			n.base.log.Debug("failed to unmarshal NodeInfo", "error", err)
 			return
 		}
-		n.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
+		n.db.Update(from, func(info *pb.NodeInfo) {
+			info.User = user
+			// Remember which of our channels this node is reachable on.
+			if idx, ok := n.base.channelIndex(channelName); ok {
+				info.Channel = idx
+			}
+		})
 		n.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
 
 		// Respond to NodeInfo requests with our own NodeInfo

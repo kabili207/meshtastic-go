@@ -2,12 +2,15 @@ package node
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/kabili207/meshtastic-go/core"
+	"github.com/kabili207/meshtastic-go/core/crypto"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/event"
 	"github.com/kabili207/meshtastic-go/transport"
+	"google.golang.org/protobuf/proto"
 )
 
 func newTestBridge(t *testing.T, mt *mockTransport, opts ...func(*BridgeConfig)) *BridgeNode {
@@ -81,5 +84,45 @@ func TestBridgeDecodedPacketUsesTransportChannel(t *testing.T) {
 	}
 	if got.ChannelKey == nil || *got.ChannelKey != "AQ==" {
 		t.Errorf("ChannelKey = %v, want AQ==", got.ChannelKey)
+	}
+}
+
+// The bridge send path resolves its channel separately from base.sendPacket, so it
+// needs its own check that a unicast follows the channel a node was last heard on.
+func TestBridgeDMUsesChannelNodeInfoArrivedOn(t *testing.T) {
+	mt := newMockTransport()
+	secondKey := make([]byte, 16)
+	copy(secondKey, crypto.DefaultKey)
+	secondKey[15] = 0x42
+	b := newTestBridge(t, mt, func(cfg *BridgeConfig) {
+		cfg.Channels = &pb.ChannelSet{
+			Settings: []*pb.ChannelSettings{
+				{Name: "LongFast", Psk: crypto.DefaultKey},
+				{Name: "SecondCh", Psk: secondKey},
+			},
+		}
+	})
+
+	userBytes, _ := proto.Marshal(&pb.User{LongName: "Peer"})
+	b.handleIncomingPacket(transport.NetworkPacket{
+		Channel: "SecondCh",
+		Packet: &pb.MeshPacket{
+			Id:   7,
+			From: 0xAA,
+			PayloadVariant: &pb.MeshPacket_Decoded{
+				Decoded: &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes},
+			},
+		},
+	})
+
+	if info := b.db.Get(0xAA); info == nil || info.Channel != 1 {
+		t.Fatalf("nodedb channel index = %v, want 1", info)
+	}
+
+	if _, err := b.SendReactionAs(context.Background(), b.cfg.NodeID, 0xAA, 7, "👍"); err != nil {
+		t.Fatal(err)
+	}
+	if got := mt.lastSent().channel; got != "SecondCh" {
+		t.Errorf("DM went out on %q, want SecondCh", got)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/kabili207/meshtastic-go/core/lora"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/event"
+	"github.com/kabili207/meshtastic-go/device/nodedb"
 	"github.com/kabili207/meshtastic-go/transport"
 	"github.com/kabili207/meshtastic-go/transport/raw"
 	"google.golang.org/protobuf/proto"
@@ -35,6 +36,11 @@ type baseNode struct {
 
 	// primaryChannel is the name of the first channel in the channel set.
 	primaryChannel string
+	// channelNames is the configured channel set in index order, so a channel
+	// index stored in the nodedb can be mapped back to a name and vice versa.
+	channelNames []string
+	// db is consulted when picking the channel for a unicast. Optional.
+	db *nodedb.NodeDB
 
 	sendMu   sync.Mutex
 	lastSend time.Time
@@ -67,7 +73,7 @@ func (b *baseNode) sendPacket(_ context.Context, packet *pb.MeshPacket, channelN
 	packet.Id = b.packetIDs.next()
 
 	if channelName == "" {
-		channelName = b.primaryChannel
+		channelName = b.channelForDestination(core.NodeID(packet.To), packet.PkiEncrypted)
 	}
 
 	// Resolve channel definition for hash and encryption key.
@@ -111,6 +117,40 @@ func (b *baseNode) sendPacket(_ context.Context, packet *pb.MeshPacket, channelN
 	b.lastSend = time.Now()
 
 	return b.transport.SendPacket(channelName, packet)
+}
+
+// channelNamesFrom returns the channel set's names in index order.
+func channelNamesFrom(set *pb.ChannelSet) []string {
+	names := make([]string, 0, len(set.Settings))
+	for _, s := range set.Settings {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
+// channelIndex maps a configured channel name to its index. Names that are not
+// configured channels, such as the "PKI" pseudo-channel, report false.
+func (b *baseNode) channelIndex(name string) (uint32, bool) {
+	for i, n := range b.channelNames {
+		if n == name {
+			return uint32(i), true
+		}
+	}
+	return 0, false
+}
+
+// channelForDestination picks the channel for a packet with none specified. A
+// unicast goes out on the channel we last heard the destination's NodeInfo on,
+// which is how firmware reaches a node it shares a secondary channel with.
+// Everything else, and any node we have not heard from, uses the primary.
+func (b *baseNode) channelForDestination(to core.NodeID, pki bool) string {
+	if pki || to == 0 || to.IsBroadcast() || b.db == nil {
+		return b.primaryChannel
+	}
+	if info := b.db.Get(to.Uint32()); info != nil && int(info.Channel) < len(b.channelNames) {
+		return b.channelNames[info.Channel]
+	}
+	return b.primaryChannel
 }
 
 // applyPacketDefaults fills in HopLimit, HopStart, Priority, and RxTime
