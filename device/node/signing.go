@@ -25,7 +25,14 @@ func (b *baseNode) signOutbound(data *pb.Data, from, packetID uint32, to core.No
 		return
 	}
 	key := b.privateKeyFor(core.NodeID(from))
-	if key == nil || !signedDataFits(data) {
+	if key == nil {
+		// A broadcast that should have been signed but was not: peers that know this
+		// identity as a signer will drop it, and new peers will never mark it verified.
+		b.log.Warn("no private key to sign outbound packet", "from", core.NodeID(from), "packetID", packetID, "portnum", data.Portnum)
+		return
+	}
+	if !signedDataFits(data) {
+		b.log.Debug("outbound packet too large to sign", "from", core.NodeID(from), "packetID", packetID, "portnum", data.Portnum)
 		return
 	}
 	sig, err := crypto.SignPacketData(key, from, packetID, data.Portnum, data.Payload)
@@ -34,6 +41,7 @@ func (b *baseNode) signOutbound(data *pb.Data, from, packetID uint32, to core.No
 		return
 	}
 	data.XeddsaSignature = sig
+	b.log.Debug("signed outbound packet", "from", core.NodeID(from), "packetID", packetID, "portnum", data.Portnum)
 }
 
 // signedDataFits reports whether data, with a signature attached, still fits a
