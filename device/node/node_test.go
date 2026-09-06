@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -467,8 +468,8 @@ func TestPKI_DisabledByDefault(t *testing.T) {
 func TestPKI_ShouldTryPKI(t *testing.T) {
 	mt := newMockTransport()
 	n := newTestNode(t, mt, func(c *Config) {
-		c.PrivateKey = make([]byte, 32)
-		c.PublicKey = make([]byte, 32)
+		ident := newIdentity(t, 0x88)
+		c.NodeID, c.PrivateKey, c.PublicKey = ident.id, ident.priv, ident.pub
 	})
 
 	tests := []struct {
@@ -479,7 +480,7 @@ func TestPKI_ShouldTryPKI(t *testing.T) {
 		{
 			name: "PKI candidate",
 			pkt: &pb.MeshPacket{
-				Channel: 0, To: 0x12345678, From: 0xAA,
+				Channel: 0, To: n.cfg.NodeID.Uint32(), From: 0xAA,
 				PayloadVariant: &pb.MeshPacket_Encrypted{Encrypted: []byte("data")},
 			},
 			expect: true,
@@ -487,7 +488,7 @@ func TestPKI_ShouldTryPKI(t *testing.T) {
 		{
 			name: "non-zero channel",
 			pkt: &pb.MeshPacket{
-				Channel: 5, To: 0x12345678, From: 0xAA,
+				Channel: 5, To: n.cfg.NodeID.Uint32(), From: 0xAA,
 				PayloadVariant: &pb.MeshPacket_Encrypted{Encrypted: []byte("data")},
 			},
 			expect: false,
@@ -511,7 +512,7 @@ func TestPKI_ShouldTryPKI(t *testing.T) {
 		{
 			name: "decoded packet (not encrypted)",
 			pkt: &pb.MeshPacket{
-				Channel: 0, To: 0x12345678, From: 0xAA,
+				Channel: 0, To: n.cfg.NodeID.Uint32(), From: 0xAA,
 				PayloadVariant: &pb.MeshPacket_Decoded{Decoded: &pb.Data{}},
 			},
 			expect: false,
@@ -542,6 +543,7 @@ func TestPKI_RoundTrip(t *testing.T) {
 	n := newTestNode(t, mt, func(c *Config) {
 		c.PrivateKey = priv
 		c.PublicKey = pub
+		c.NodeID = 0 // derived from the key
 		c.EventHandlers = []event.Handler{func(evt any) {
 			if e, ok := evt.(*event.TextMessage); ok {
 				got = e
@@ -571,7 +573,7 @@ func TestPKI_RoundTrip(t *testing.T) {
 		Packet: &pb.MeshPacket{
 			Id:      packetID,
 			From:    0xAA,
-			To:      0x12345678,
+			To:      n.cfg.NodeID.Uint32(),
 			Channel: 0,
 			PayloadVariant: &pb.MeshPacket_Encrypted{
 				Encrypted: encrypted,
@@ -599,7 +601,7 @@ func TestPKI_RoundTrip(t *testing.T) {
 }
 
 func TestSendData_PKI(t *testing.T) {
-	_, priv, err := crypto.GenerateKeyPair()
+	pub, priv, err := crypto.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair: %v", err)
 	}
@@ -611,7 +613,8 @@ func TestSendData_PKI(t *testing.T) {
 	mt := newMockTransport()
 	n := newTestNode(t, mt, func(c *Config) {
 		c.PrivateKey = priv
-		c.PublicKey = make([]byte, 32) // own public key (not needed for send)
+		c.PublicKey = pub
+		c.NodeID = 0 // derived from the key
 	})
 
 	// Seed recipient's public key in NodeDB
@@ -639,8 +642,8 @@ func TestSendData_PKI(t *testing.T) {
 	if !sent.packet.PkiEncrypted {
 		t.Error("expected PkiEncrypted=true")
 	}
-	if sent.packet.From != 0x12345678 {
-		t.Errorf("expected From=0x12345678, got %x", sent.packet.From)
+	if sent.packet.From != n.cfg.NodeID.Uint32() {
+		t.Errorf("expected From=%x, got %x", n.cfg.NodeID.Uint32(), sent.packet.From)
 	}
 	if sent.packet.To != 0xBB {
 		t.Errorf("expected To=0xBB, got %x", sent.packet.To)
@@ -811,4 +814,47 @@ func TestNodeInfoOnPKIDoesNotStoreChannel(t *testing.T) {
 	if _, ok := n.base.channelIndex("PKI"); ok {
 		t.Fatal("PKI resolved to a channel index")
 	}
+}
+
+// A Node's identity is fixed for its lifetime, so the 2.8 binding between key and
+// node ID is enforced at construction rather than per send.
+func TestNodeIdentityBinding(t *testing.T) {
+	ident := newIdentity(t, 0x77)
+	cfgWith := func(id core.NodeID, pub []byte) Config {
+		return Config{Transport: newMockTransport(), NodeID: id, PublicKey: pub, PrivateKey: ident.priv, Channels: defaultChannels()}
+	}
+
+	t.Run("mismatched ID is refused", func(t *testing.T) {
+		if _, err := New(cfgWith(ident.id^1, ident.pub)); !errors.Is(err, ErrIdentityMismatch) {
+			t.Fatalf("err = %v, want ErrIdentityMismatch", err)
+		}
+	})
+
+	t.Run("ID is derived when omitted", func(t *testing.T) {
+		n, err := New(cfgWith(0, ident.pub))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n.cfg.NodeID != ident.id {
+			t.Errorf("NodeID = %s, want derived %s", n.cfg.NodeID, ident.id)
+		}
+	})
+
+	t.Run("matching ID is accepted", func(t *testing.T) {
+		if _, err := New(cfgWith(ident.id, ident.pub)); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("ID is still required without a key", func(t *testing.T) {
+		if _, err := New(cfgWith(0, nil)); err == nil {
+			t.Fatal("a config with neither NodeID nor PublicKey was accepted")
+		}
+	})
+
+	t.Run("malformed key is refused", func(t *testing.T) {
+		if _, err := New(cfgWith(ident.id, ident.pub[:31])); err == nil {
+			t.Fatal("a 31-byte PublicKey was accepted")
+		}
+	})
 }

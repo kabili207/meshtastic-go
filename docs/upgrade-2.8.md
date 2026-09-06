@@ -177,6 +177,12 @@ first-contact signed NodeInfo unless `crc32Buffer(user.public_key) == p->from`.
   rejected by every 2.8 peer on first contact, silently. `crypto.KeyPairFromSeed`
   exists so a bridge can derive per-identity keys from one root secret and let the
   node ID follow.
+- `Node` enforces the same binding at construction, since its one identity is
+  fixed for its lifetime: a `PublicKey` whose derived ID differs from `NodeID` makes
+  `New` fail with `ErrIdentityMismatch`, and `NodeID` may be omitted when
+  `PublicKey` is set, in which case it is derived the way firmware's
+  `ensurePkiIdentity` does. This breaks a config that pairs a random `NodeID` with a
+  key, but such a config is already invisible to 2.8 peers.
 
 **Verify:** unit test against the C-derived vector above, plus a round-trip
 through an existing known keypair.

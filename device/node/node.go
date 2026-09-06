@@ -29,7 +29,9 @@ type Config struct {
 	// Transport is the raw transport for mesh communication (MQTT, UDP, etc.).
 	Transport raw.RawTransport
 
-	// NodeID is this node's identity.
+	// NodeID is this node's identity. When PublicKey is set, NodeID may be left
+	// zero and is derived from the key the way firmware 2.8 does; if both are set
+	// they must agree, or New returns ErrIdentityMismatch.
 	NodeID core.NodeID
 	// LongName is the display name.
 	LongName string
@@ -94,8 +96,19 @@ func (c *Config) validate() error {
 	if c.Transport == nil {
 		return fmt.Errorf("Transport is required")
 	}
+	if len(c.PublicKey) > 0 && len(c.PublicKey) != core.PublicKeySize {
+		return fmt.Errorf("PublicKey must be %d bytes, got %d", core.PublicKeySize, len(c.PublicKey))
+	}
+	if c.NodeID == 0 && len(c.PublicKey) == core.PublicKeySize {
+		c.NodeID, _ = core.NodeIDFromPublicKey(c.PublicKey) // length checked above
+	}
 	if c.NodeID == 0 {
 		return fmt.Errorf("NodeID is required")
+	}
+	// A NodeInfo whose key does not derive its ID is rejected by every 2.8 peer on
+	// first contact, so a mismatch here would make the node permanently unverifiable.
+	if len(c.PublicKey) > 0 && !c.NodeID.MatchesPublicKey(c.PublicKey) {
+		return fmt.Errorf("%w: %s", ErrIdentityMismatch, c.NodeID)
 	}
 	if c.Channels == nil {
 		return fmt.Errorf("Channels is required")
