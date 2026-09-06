@@ -292,6 +292,11 @@ overwritten by the pipeline's own verdict, never read.
 `Licensed` is one flag for the whole bridge rather than per managed identity;
 firmware has a single `owner.is_licensed` too.
 
+**Verified against real hardware.** With a bridge running this code against 2.8
+nodes, the bridged identities show as "verified" in the Meshtastic app. That is the
+full path end to end: the signed first-contact NodeInfo accepted, the key-to-node-ID
+binding satisfied, and the peer marking the identity as a known signer.
+
 ---
 
 ## Phase 4 — Position precision clamping
