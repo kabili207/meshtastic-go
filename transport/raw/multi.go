@@ -240,9 +240,10 @@ func (m *MultiTransport) makeChildStateHandler(e *multiEntry) transport.StateHan
 			handler(m, transport.ListenerEventConnected)
 
 		case transport.ListenerEventReconnecting:
-			// Only emit reconnecting if no other transport is connected.
-			for _, other := range m.transports {
-				if &other != e && other.transport.IsConnected() {
+			// Only emit reconnecting if no other transport is connected. Compare by
+			// slice element, not a loop copy, so the emitting child excludes itself.
+			for i := range m.transports {
+				if other := &m.transports[i]; other != e && other.transport.IsConnected() {
 					return
 				}
 			}

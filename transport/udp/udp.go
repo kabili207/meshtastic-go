@@ -51,7 +51,6 @@ type Transport struct {
 	stopChan     chan struct{}
 	waitGroup    sync.WaitGroup
 	reconnectMux sync.Mutex
-	isRestart    bool
 
 	mu            sync.RWMutex
 	packetHandler transport.PacketHandler
@@ -96,8 +95,10 @@ func (t *Transport) Stop() error {
 	t.running.Store(false)
 	t.listening.Store(false)
 	close(t.stopChan)
-	t.waitGroup.Wait()
+	// Close before waiting: the read loop only notices stopChan between reads, so
+	// an idle socket would otherwise block shutdown until a packet arrives.
 	t.closeConn()
+	t.waitGroup.Wait()
 	return nil
 }
 
@@ -152,6 +153,7 @@ func (t *Transport) listenWithReconnect() {
 			t.log.Warn("UDP setup failed", "error", err)
 			t.listening.Store(false)
 			t.emitStateEvent(transport.ListenerEventError)
+			t.emitStateEvent(transport.ListenerEventReconnecting)
 			time.Sleep(delay)
 			delay = minDuration(delay*2, maxReconnectDelay)
 			continue
@@ -159,13 +161,10 @@ func (t *Transport) listenWithReconnect() {
 
 		t.listening.Store(true)
 
-		if t.isRestart {
-			t.emitStateEvent(transport.ListenerEventReconnecting)
-		} else {
-			t.emitStateEvent(transport.ListenerEventConnected)
-		}
-
-		t.isRestart = true
+		// Connected fires on every successful bind, not only the first. Reconnecting
+		// means a retry is pending, matching the MQTT transport, so consumers that
+		// cancelled work on Disconnected know to resume here.
+		t.emitStateEvent(transport.ListenerEventConnected)
 		t.log.Info("listening for UDP multicast", "addr", t.conn.LocalAddr().String())
 
 		if t.listenLoop() == nil {
@@ -176,6 +175,7 @@ func (t *Transport) listenWithReconnect() {
 		t.closeConn()
 		t.listening.Store(false)
 		t.emitStateEvent(transport.ListenerEventDisconnected)
+		t.emitStateEvent(transport.ListenerEventReconnecting)
 		time.Sleep(delay)
 		delay = minDuration(delay*2, maxReconnectDelay)
 	}
@@ -192,6 +192,9 @@ func (t *Transport) listenLoop() error {
 		default:
 			n, _, err := t.conn.ReadFromUDP(buf)
 			if err != nil {
+				if !t.running.Load() {
+					return nil
+				}
 				t.log.Error("read error", "error", err)
 				return err
 			}

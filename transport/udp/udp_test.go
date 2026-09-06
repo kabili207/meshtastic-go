@@ -1,10 +1,13 @@
 package udp
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
+	"github.com/kabili207/meshtastic-go/transport"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -109,5 +112,47 @@ func TestSanitizeInboundPreservesPayload(t *testing.T) {
 	}
 	if got := p.GetEncrypted(); len(got) != 4 || got[0] != 1 {
 		t.Error("encrypted payload was altered")
+	}
+}
+
+// A listener that drops and rebinds must report Connected again, since consumers
+// restart work on Connected that they cancelled on Disconnected.
+func TestRestartEmitsConnectedAgain(t *testing.T) {
+	tr := New(Config{})
+	events := make(chan transport.ListenerEvent, 16)
+	tr.SetStateHandler(func(_ transport.Transport, e transport.ListenerEvent) { events <- e })
+	if err := tr.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Stop()
+
+	next := func(want transport.ListenerEvent) {
+		t.Helper()
+		select {
+		case got := <-events:
+			if got == transport.ListenerEventError && want == transport.ListenerEventConnected {
+				t.Skip("no multicast-capable interface available")
+			}
+			if got != want {
+				t.Fatalf("event = %s, want %s", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for %s", want)
+		}
+	}
+
+	next(transport.ListenerEventConnected)
+
+	// Kill the socket out from under the read loop to force a restart.
+	tr.reconnectMux.Lock()
+	conn := tr.conn
+	tr.reconnectMux.Unlock()
+	conn.Close()
+
+	next(transport.ListenerEventDisconnected)
+	next(transport.ListenerEventReconnecting)
+	next(transport.ListenerEventConnected)
+	if !tr.IsConnected() {
+		t.Fatal("transport should report connected after rebind")
 	}
 }
