@@ -3,6 +3,7 @@ package node
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/kabili207/meshtastic-go/core"
@@ -178,5 +179,33 @@ func TestBridgeSetNodeChannelSeedsUnicastRouting(t *testing.T) {
 	}
 	if got := mt.lastSent().channel; got != "Shared" {
 		t.Errorf("DM went out on %q, want Shared", got)
+	}
+}
+
+// A NodeInfo whose key does not derive its node ID is refused rather than sent,
+// since 2.8 peers drop it on first contact anyway.
+func TestBridgeRefusesNodeInfoWithMismatchedIdentity(t *testing.T) {
+	pub, _, _ := crypto.KeyPairFromSeed(bytes.Repeat([]byte{0x11}, 32))
+	derived, _ := core.NodeIDFromPublicKey(pub)
+	keyFor := func(id core.NodeID) []byte { return pub }
+
+	mismatched := newTestBridge(t, newMockTransport(), func(cfg *BridgeConfig) {
+		cfg.PublicKeyForNode = keyFor
+	})
+	if _, err := mismatched.SendNodeInfoAs(context.Background(), mismatched.cfg.NodeID, core.BroadcastNodeID); !errors.Is(err, ErrIdentityMismatch) {
+		t.Fatalf("err = %v, want ErrIdentityMismatch", err)
+	}
+
+	mt := newMockTransport()
+	matched := newTestBridge(t, mt, func(cfg *BridgeConfig) {
+		cfg.NodeID = derived
+		cfg.IsManagedNode = func(id core.NodeID) bool { return id == derived }
+		cfg.PublicKeyForNode = keyFor
+	})
+	if _, err := matched.SendNodeInfoAs(context.Background(), derived, core.BroadcastNodeID); err != nil {
+		t.Fatalf("matched identity refused: %v", err)
+	}
+	if mt.sentCount() != 1 {
+		t.Fatalf("sent %d packets, want 1", mt.sentCount())
 	}
 }

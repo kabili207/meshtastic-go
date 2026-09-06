@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -633,6 +634,10 @@ func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, request
 	if user == nil {
 		return
 	}
+	if err := checkNodeInfoIdentity(asNode, user); err != nil {
+		b.base.log.Error("refusing NodeInfo response", "as", asNode, "error", err)
+		return
+	}
 
 	userBytes, err := proto.Marshal(user)
 	if err != nil {
@@ -657,6 +662,23 @@ func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, request
 	} else {
 		b.base.log.Debug("sent NodeInfo response", "as", asNode, "to", core.NodeID(to))
 	}
+}
+
+// ErrIdentityMismatch reports a NodeInfo whose public key does not derive its
+// node ID. Firmware 2.8 rejects such a NodeInfo on first contact once it is
+// signed, so sending one only makes the identity invisible to new peers.
+var ErrIdentityMismatch = errors.New("node ID is not derived from the public key")
+
+// checkNodeInfoIdentity enforces the 2.8 identity binding on a NodeInfo we are
+// about to send. A NodeInfo without a key is left alone.
+func checkNodeInfoIdentity(asNode core.NodeID, user *pb.User) error {
+	if len(user.PublicKey) == 0 {
+		return nil
+	}
+	if !asNode.MatchesPublicKey(user.PublicKey) {
+		return fmt.Errorf("%w: %s", ErrIdentityMismatch, asNode)
+	}
+	return nil
 }
 
 // buildUserFor constructs the NodeInfo User for a managed identity. The bridge
@@ -774,11 +796,15 @@ func (b *BridgeNode) SendAckAs(ctx context.Context, from, to core.NodeID, packet
 
 // SendNodeInfoAs sends a NodeInfo packet from a managed node. Pass
 // WithWantResponse to request the recipient's NodeInfo in return (used to
-// discover unknown nodes). Returns the generated packet ID.
+// discover unknown nodes). Returns the generated packet ID, or
+// ErrIdentityMismatch if the identity's key does not derive its node ID.
 func (b *BridgeNode) SendNodeInfoAs(ctx context.Context, from, to core.NodeID, opts ...SendOption) (uint32, error) {
 	user := b.buildUserFor(from)
 	if user == nil {
 		return 0, fmt.Errorf("no NodeInfo available for %s", from)
+	}
+	if err := checkNodeInfoIdentity(from, user); err != nil {
+		return 0, err
 	}
 	userBytes, err := proto.Marshal(user)
 	if err != nil {

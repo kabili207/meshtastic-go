@@ -69,6 +69,27 @@ func GenerateKeyPair() (publicKey, privateKey []byte, err error) {
 	return priv.PublicKey().Bytes(), priv.Bytes(), nil
 }
 
+// KeyPairFromSeed builds a deterministic X25519 key pair from 32 bytes of seed
+// material, for callers that derive node identities from a root secret rather
+// than storing one random key per node. The seed is clamped per RFC 7748 so the
+// returned private key is the canonical scalar; the same seed always yields the
+// same pair.
+func KeyPairFromSeed(seed []byte) (publicKey, privateKey []byte, err error) {
+	if len(seed) != PublicKeySize {
+		return nil, nil, ErrInvalidKeyLength
+	}
+	priv := make([]byte, PublicKeySize)
+	copy(priv, seed)
+	priv[0] &= 248
+	priv[31] &= 127
+	priv[31] |= 64
+	pub, err := PublicKeyFromPrivate(priv)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pub, priv, nil
+}
+
 // EncryptCurve25519 performs AES-CCM encryption with the specified ECDH shared key.
 // It requires the packetID and sending node ID for the AES IV.
 func EncryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode uint32) ([]byte, error) {

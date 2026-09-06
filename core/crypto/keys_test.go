@@ -3,6 +3,8 @@ package crypto
 import (
 	"bytes"
 	"testing"
+
+	"golang.org/x/crypto/curve25519"
 )
 
 func TestParseKey(t *testing.T) {
@@ -169,5 +171,41 @@ func TestGenerateWeakKeys(t *testing.T) {
 	// So array index 1 → lastByte = DefaultKey[15] + 0 = DefaultKey[15] → DefaultKey itself
 	if !bytes.Equal(keys[1], DefaultKey) {
 		t.Errorf("keys[1] = %x, want DefaultKey %x", keys[1], DefaultKey)
+	}
+}
+
+func TestKeyPairFromSeedIsDeterministicAndClamped(t *testing.T) {
+	seed := bytes.Repeat([]byte{0xFF}, PublicKeySize)
+	pub1, priv1, err := KeyPairFromSeed(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub2, priv2, _ := KeyPairFromSeed(seed)
+	if !bytes.Equal(pub1, pub2) || !bytes.Equal(priv1, priv2) {
+		t.Fatal("same seed produced different pairs")
+	}
+	if priv1[0]&7 != 0 || priv1[31]&128 != 0 || priv1[31]&64 == 0 {
+		t.Errorf("private key not clamped: %x", priv1)
+	}
+	if got, _ := PublicKeyFromPrivate(priv1); !bytes.Equal(got, pub1) {
+		t.Error("public key does not match private key")
+	}
+	other, _, _ := KeyPairFromSeed(bytes.Repeat([]byte{0x01}, PublicKeySize))
+	if bytes.Equal(other, pub1) {
+		t.Error("different seeds produced the same public key")
+	}
+	if _, _, err := KeyPairFromSeed(seed[:31]); err == nil {
+		t.Error("short seed accepted")
+	}
+}
+
+func TestKeyPairFromSeedInteroperatesWithECDH(t *testing.T) {
+	pub, priv, _ := KeyPairFromSeed(bytes.Repeat([]byte{0x42}, PublicKeySize))
+	shared1, err := curve25519.X25519(priv, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shared1) != 32 {
+		t.Fatal("bad shared secret length")
 	}
 }

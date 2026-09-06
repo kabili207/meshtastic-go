@@ -172,6 +172,11 @@ first-contact signed NodeInfo unless `crc32Buffer(user.public_key) == p->from`.
   key. Phase 3 depends on this.
 - Callers still supply their own `NodeID`, which stays valid. Only key generation
   and validation paths use the new derivation.
+- `BridgeNode` refuses to send a NodeInfo whose key does not derive its node ID
+  (`ErrIdentityMismatch`). Once outbound signing landed, such a NodeInfo was being
+  rejected by every 2.8 peer on first contact, silently. `crypto.KeyPairFromSeed`
+  exists so a bridge can derive per-identity keys from one root secret and let the
+  node ID follow.
 
 **Verify:** unit test against the C-derived vector above, plus a round-trip
 through an existing known keypair.
