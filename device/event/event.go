@@ -43,8 +43,9 @@ type Event struct {
 	// IsNeighbor is true when the packet was received directly (not via MQTT)
 	// with no intervening hops, indicating the sender is a radio neighbor.
 	IsNeighbor bool
-	// ChannelKey is the base64 channel key the packet was decrypted with, for
-	// PSK channels. Nil for PKI-encrypted or already-decoded packets.
+	// ChannelKey is the base64 key of the PSK channel the packet arrived on: the
+	// key it was decrypted with, or the registered key for an already-decoded
+	// packet. Nil for PKI-encrypted packets and unregistered channels.
 	ChannelKey *string
 	// WantAck is true if the sender requested a delivery acknowledgement.
 	WantAck bool

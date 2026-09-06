@@ -160,6 +160,7 @@ func (t *Transport) listenWithReconnect() {
 		}
 
 		t.listening.Store(true)
+		delay = 1 * time.Second
 
 		// Connected fires on every successful bind, not only the first. Reconnecting
 		// means a retry is pending, matching the MQTT transport, so consumers that

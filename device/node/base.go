@@ -13,6 +13,7 @@ import (
 	"github.com/kabili207/meshtastic-go/core/lora"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/event"
+	"github.com/kabili207/meshtastic-go/transport"
 	"github.com/kabili207/meshtastic-go/transport/raw"
 	"google.golang.org/protobuf/proto"
 )
@@ -148,4 +149,21 @@ func encryptDecoded(pkt *pb.MeshPacket, data *pb.Data, key []byte) error {
 		Encrypted: encrypted,
 	}
 	return nil
+}
+
+// decodedChannel resolves the channel of an already-decoded packet. Its channel
+// field is a channel index rather than a hash, so the transport's channel name is
+// used when it supplies one, with the hash lookup as a fallback. The registered
+// key is returned so consumers can identify the channel the same way they would
+// for a packet decrypted locally.
+func (b *baseNode) decodedChannel(pkt transport.NetworkPacket) (string, *string) {
+	name := pkt.Channel
+	if name == "" {
+		name = b.channels.LookupName(pkt.Packet.Channel)
+	}
+	if ch, ok := b.channels.LookupByName(name); ok {
+		key := ch.GetKeyString()
+		return name, &key
+	}
+	return name, nil
 }

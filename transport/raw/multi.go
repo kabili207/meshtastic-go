@@ -236,7 +236,13 @@ func (m *MultiTransport) makeChildStateHandler(e *multiEntry) transport.StateHan
 			handler(m, transport.ListenerEventDisconnected)
 
 		case transport.ListenerEventConnected:
-			// Emit connected — the multi-transport is now usable.
+			// Only the first child to come up changes the aggregate state. A later
+			// child, or one reconnecting while a sibling is up, is not a transition.
+			for i := range m.transports {
+				if other := &m.transports[i]; other != e && other.transport.IsConnected() {
+					return
+				}
+			}
 			handler(m, transport.ListenerEventConnected)
 
 		case transport.ListenerEventReconnecting:

@@ -53,7 +53,8 @@ type BridgeConfig struct {
 	PrivateKeyForNode func(core.NodeID) []byte
 
 	// PublicKeyForNode returns the X25519 public key for a node (managed or remote).
-	// Used for both PKI encryption (managed→remote) and decryption (remote→managed).
+	// Used for both PKI encryption (managed→remote) and decryption (remote→managed),
+	// and for the bridge's own key when it advertises NodeInfo.
 	PublicKeyForNode func(core.NodeID) []byte
 
 	// NodeInfoForNode returns the long name, short name, and public key for a managed node.
@@ -265,8 +266,8 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 
 	// 3. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
-		channelName := b.base.channels.LookupName(pkt.Packet.Channel)
-		b.processDecoded(pkt, decoded, channelName, nil, false, 0)
+		channelName, channelKey := b.base.decodedChannel(pkt)
+		b.processDecoded(pkt, decoded, channelName, channelKey, false, 0)
 		return
 	}
 
@@ -599,7 +600,9 @@ func (b *BridgeNode) buildUserFor(asNode core.NodeID) *pb.User {
 	if asNode == b.cfg.NodeID {
 		longName = b.cfg.LongName
 		shortName = b.cfg.ShortName
-		// Bridge's own public key is not exposed via config; omit.
+		if b.cfg.PublicKeyForNode != nil {
+			pubKey = b.cfg.PublicKeyForNode(asNode)
+		}
 	} else if b.cfg.NodeInfoForNode != nil {
 		var ok bool
 		longName, shortName, pubKey, ok = b.cfg.NodeInfoForNode(asNode)

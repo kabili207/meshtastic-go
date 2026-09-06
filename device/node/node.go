@@ -394,7 +394,7 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 
 	// 4. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
-		channelName := n.base.channels.LookupName(pkt.Packet.Channel)
+		channelName, _ := n.base.decodedChannel(pkt)
 		n.processDecoded(pkt, decoded, channelName, false)
 		return
 	}

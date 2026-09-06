@@ -67,3 +67,31 @@ func TestDisconnectedOnlyWhenAllChildrenDown(t *testing.T) {
 		t.Fatalf("events = %v, want [disconnected]", *got)
 	}
 }
+
+func TestConnectedOnlyForFirstChildUp(t *testing.T) {
+	_, a, b, got := newMultiWithFakes()
+	a.connected = true
+	a.emit(transport.ListenerEventConnected)
+	b.connected = true
+	b.emit(transport.ListenerEventConnected)
+	if len(*got) != 1 || (*got)[0] != transport.ListenerEventConnected {
+		t.Fatalf("events = %v, want a single connected", *got)
+	}
+}
+
+// A child reconnecting while its sibling stayed up is not a transition for the
+// aggregate, so consumers do not restart work that never stopped.
+func TestConnectedSuppressedOnReconnectWhileSiblingUp(t *testing.T) {
+	_, a, b, got := newMultiWithFakes()
+	a.connected = true
+	a.emit(transport.ListenerEventConnected)
+	b.connected = true
+	b.emit(transport.ListenerEventConnected)
+	b.connected = false
+	b.emit(transport.ListenerEventDisconnected)
+	b.connected = true
+	b.emit(transport.ListenerEventConnected)
+	if len(*got) != 1 {
+		t.Fatalf("events = %v, want only the initial connected", *got)
+	}
+}
