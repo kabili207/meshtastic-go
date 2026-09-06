@@ -232,6 +232,11 @@ func (b *BridgeNode) AddChannel(name, keyStr string) error {
 	}
 	b.base.channels.Register(ch)
 	b.base.transport.AddChannel(name)
+	// Give runtime channels an index too, so a NodeInfo heard on one is
+	// remembered for unicasts the same way as for configured channels.
+	if _, ok := b.base.channelIndex(name); !ok {
+		b.base.channelNames = append(b.base.channelNames, name)
+	}
 	return nil
 }
 

@@ -126,3 +126,37 @@ func TestBridgeDMUsesChannelNodeInfoArrivedOn(t *testing.T) {
 		t.Errorf("DM went out on %q, want SecondCh", got)
 	}
 }
+
+// Channels the bridge joins after construction must be indexed as well, since a
+// bridge learns most of its channels from portals at runtime.
+func TestBridgeRuntimeChannelTrackedForUnicast(t *testing.T) {
+	mt := newMockTransport()
+	b := newTestBridge(t, mt)
+	if err := b.AddChannel("Later", "AQ=="); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AddChannel("Later", "AQ=="); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.base.channelNames) != 2 {
+		t.Fatalf("channelNames = %v, want primary plus one", b.base.channelNames)
+	}
+
+	userBytes, _ := proto.Marshal(&pb.User{LongName: "Peer"})
+	b.handleIncomingPacket(transport.NetworkPacket{
+		Channel: "Later",
+		Packet: &pb.MeshPacket{
+			Id:   8,
+			From: 0xBB,
+			PayloadVariant: &pb.MeshPacket_Decoded{
+				Decoded: &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes},
+			},
+		},
+	})
+	if _, err := b.SendTextAs(context.Background(), b.cfg.NodeID, 0xBB, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := mt.lastSent().channel; got != "Later" {
+		t.Errorf("DM went out on %q, want Later", got)
+	}
+}
