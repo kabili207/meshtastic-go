@@ -18,7 +18,7 @@ Work is on branch `feature/protobufs-2.8`, branched from `main`.
 | 2. Identity from public key | Done |
 | 3. XEdDSA signing | Primitives done and cross-checked; policy layer not started |
 | 4. Position precision clamping | Done |
-| 5. Features and hardening | UDP multicast done; rest not started |
+| 5. Features and hardening | UDP, MQTT hardening, channel tracking done; region presets, MeshBeacon, geofences remain |
 
 Build, vet, and the full test suite pass against protobufs v2.8.0.
 
@@ -349,16 +349,25 @@ configured index and is not stored.
 The transport-agnostic `nodedb.ProcessPacket` only has a PSK, not a name, so it
 cannot resolve an index and is unchanged.
 
-### MQTT downlink hardening
+### MQTT downlink hardening (done)
 
-Firmware now forces `pki_encrypted = false` on every MQTT downlink, on the grounds
-that "only local AES-CCM decryption may establish PKI authentication." It also runs
-the signature policy on already-decoded downlinks, since those bypass
-`perhapsDecode` entirely, and adds a `shouldDropMqttDownlink` gate covering ignored
-nodes, `NODENUM_BROADCAST` as source, and `ignore_mqtt`.
+Firmware's `onReceiveProto` is stronger than the plan described. It does not clear
+untrusted fields; it rebuilds the packet from an allowlist (`from`, `to`, `id`,
+`channel`, hops, `want_ack`, payload) and zeroes everything else, so RSSI, SNR,
+receive time, PKI state, and relay hints never carry over from the broker. It also
+drops an incomplete envelope, anything our own gateway published, a `from` that is
+not a node, hops above 7, and plaintext `ADMIN_APP`.
 
-We should not let a broker-supplied `pki_encrypted` flag mean anything. Audit what
-our MQTT transport currently does with that field on ingest.
+Our transport used to pass the envelope's packet through verbatim. `sanitizeInbound`
+now mirrors the rebuild. Two firmware gates are deliberately not mirrored:
+`ignore_mqtt` and the ignored-node list are device config we do not model, and the
+"drop decoded when encryption is expected" rule is likewise a config toggle. The
+`from == self` check is applied by the node pipelines, as with UDP. The XEdDSA
+policy check firmware runs on decoded downlinks lands with phase 3.
+
+One deliberate difference: firmware rejects only `from == 0` and the broadcast
+address here, while we reject the whole reserved range (`IsReservedID`). Firmware
+never assigns a node number below 4, so a `from` of 1 to 3 is a forgery either way.
 
 ### Region presets in the client handshake
 

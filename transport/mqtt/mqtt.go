@@ -265,18 +265,61 @@ func (t *Transport) handleMessage(_ paho.Client, message paho.Message) {
 		return
 	}
 
-	if se.Packet == nil {
+	pkt, err := t.sanitizeInbound(se)
+	if err != nil {
+		t.log.Debug("dropping MQTT packet", "gateway", se.GatewayId, "reason", err)
 		return
 	}
 
-	channel := t.getChannelFromTopic(message.Topic())
-
 	handler(transport.NetworkPacket{
-		Packet:    se.Packet,
-		Channel:   channel,
+		Packet:    pkt,
+		Channel:   t.getChannelFromTopic(message.Topic()),
 		Source:    transport.PacketSourceMQTT,
 		GatewayID: se.GatewayId,
 	})
+}
+
+// sanitizeInbound rebuilds a downlink packet from the fields firmware's
+// onReceiveProto copies, rather than trusting whatever a broker peer relayed.
+// Local-only state (RSSI, SNR, receive time, PKI authentication, relay hints)
+// is simply not carried over, so nothing a peer sets there can look trusted.
+// The one firmware check missing here is from == self; the node pipelines
+// apply it.
+func (t *Transport) sanitizeInbound(se *pb.ServiceEnvelope) (*pb.MeshPacket, error) {
+	if se.ChannelId == "" || se.GatewayId == "" || se.Packet == nil {
+		return nil, errors.New("incomplete service envelope")
+	}
+	if se.GatewayId == t.cfg.NodeID.String() {
+		return nil, errors.New("published by this node")
+	}
+
+	in := se.Packet
+	if core.NodeID(in.From).IsReservedID() {
+		return nil, fmt.Errorf("from %#08x is not a node", in.From)
+	}
+	if in.HopLimit > core.MaxHops || in.HopStart > core.MaxHops {
+		return nil, fmt.Errorf("hop_limit %d or hop_start %d exceeds %d", in.HopLimit, in.HopStart, core.MaxHops)
+	}
+	if in.PayloadVariant == nil {
+		return nil, errors.New("no payload")
+	}
+	// Admin traffic over a plaintext broker is an open door; firmware refuses it.
+	if in.GetDecoded().GetPortnum() == pb.PortNum_ADMIN_APP {
+		return nil, errors.New("plaintext admin packet")
+	}
+
+	return &pb.MeshPacket{
+		From:               in.From,
+		To:                 in.To,
+		Id:                 in.Id,
+		Channel:            in.Channel,
+		HopLimit:           in.HopLimit,
+		HopStart:           in.HopStart,
+		WantAck:            in.WantAck,
+		PayloadVariant:     in.PayloadVariant,
+		ViaMqtt:            true,
+		TransportMechanism: pb.MeshPacket_TRANSPORT_MQTT,
+	}, nil
 }
 
 func (t *Transport) onConnected(_ paho.Client) {
