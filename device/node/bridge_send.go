@@ -99,6 +99,8 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 		channelName = b.base.channelForDestination(s.to, s.enc == EncryptPKI)
 	}
 
+	b.base.signOutbound(data, s.from.Uint32(), packetID, s.to, s.enc == EncryptPKI)
+
 	switch s.enc {
 	case EncryptNone:
 		pkt.Channel = 0

@@ -31,6 +31,9 @@ type Event struct {
 	Portnum pb.PortNum
 	// IsPKI is true if the packet was PKI-encrypted.
 	IsPKI bool
+	// IsSigned is true if the packet carried an XEdDSA signature that we verified
+	// against the sender's identity key. Never set from the wire.
+	IsSigned bool
 	// RawData is the full decoded pb.Data, for consumers that need the raw payload.
 	RawData *pb.Data
 	// ManagedNodeID is set when the packet was addressed to a specific managed

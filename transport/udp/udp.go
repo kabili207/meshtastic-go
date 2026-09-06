@@ -241,9 +241,10 @@ func sanitizeInbound(msg *pb.MeshPacket) error {
 	}
 
 	msg.TransportMechanism = pb.MeshPacket_TRANSPORT_MULTICAST_UDP
-	// Only our own decryption may establish these.
+	// Only our own decryption and verification may establish these.
 	msg.PkiEncrypted = false
 	msg.PublicKey = nil
+	msg.XeddsaSigned = false
 	// No local RF measurement exists for a UDP arrival. Whatever values came in belong
 	// to the node that put the packet on the wire, so clear presence, not just the number.
 	msg.RxSnr = 0

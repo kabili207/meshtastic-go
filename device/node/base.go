@@ -42,6 +42,12 @@ type baseNode struct {
 	// db is consulted when picking the channel for a unicast. Optional.
 	db *nodedb.NodeDB
 
+	// XEdDSA packet signing. See signing.go.
+	signaturePolicy pb.Config_SecurityConfig_PacketSignaturePolicy
+	licensed        bool
+	privateKeyFor   func(core.NodeID) []byte
+	publicKeyFor    func(core.NodeID) []byte
+
 	sendMu   sync.Mutex
 	lastSend time.Time
 
@@ -95,6 +101,10 @@ func (b *baseNode) sendPacket(_ context.Context, packet *pb.MeshPacket, channelN
 			bf := decoded.GetBitfield() | 1 // bit 0 = OK to MQTT
 			decoded.Bitfield = &bf
 		}
+	}
+
+	if decoded := packet.GetDecoded(); decoded != nil {
+		b.signOutbound(decoded, packet.From, packet.Id, core.NodeID(packet.To), packet.PkiEncrypted)
 	}
 
 	// PSK-encrypt decoded payloads so other nodes can receive them.

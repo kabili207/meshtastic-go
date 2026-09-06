@@ -63,6 +63,17 @@ type Config struct {
 	// PublicKey is the X25519 public key for this node. If nil, PKI is disabled.
 	PublicKey []byte
 
+	// SignaturePolicy controls how received packets are authenticated. The zero
+	// value is COMPATIBLE, the firmware wire default: unsigned packets are
+	// accepted, malformed or invalid signatures are dropped. Outbound packets are
+	// signed whenever PrivateKey is set, regardless of policy.
+	SignaturePolicy pb.Config_SecurityConfig_PacketSignaturePolicy
+
+	// Licensed marks this node as a licensed (amateur radio) operator. Licensed
+	// traffic stays plaintext, so firmware signs unicasts as well as broadcasts
+	// and expects the same of peers.
+	Licensed bool
+
 	// DefaultHopLimit for outbound packets. If zero, defaults to 3.
 	// The maximum usable value is 7.
 	DefaultHopLimit uint32
@@ -170,6 +181,15 @@ func New(cfg Config) (*Node, error) {
 		Logger:    cfg.Logger,
 	})
 	n.base.db = n.db
+	n.base.signaturePolicy = cfg.SignaturePolicy
+	n.base.licensed = cfg.Licensed
+	n.base.privateKeyFor = func(id core.NodeID) []byte {
+		if id == cfg.NodeID {
+			return cfg.PrivateKey
+		}
+		return nil
+	}
+	n.base.publicKeyFor = n.lookupPublicKey
 
 	// Create broadcast scheduler — Node methods handle packet construction
 	n.scheduler = broadcast.New(broadcast.Config{
@@ -432,6 +452,12 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 // processDecoded handles a successfully decoded packet: updates the nodedb
 // and emits typed events.
 func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channelName string, isPKI bool) {
+	signed, ok := n.base.checkSignaturePolicy(pkt.Packet, data, isPKI)
+	if !ok {
+		n.base.log.Debug("dropping packet under signature policy",
+			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
+		return
+	}
 	evt := event.Event{
 		ChannelName: channelName,
 		From:        core.NodeID(pkt.Packet.From),
@@ -440,6 +466,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 		PacketID:    pkt.Packet.Id,
 		Portnum:     data.Portnum,
 		IsPKI:       isPKI,
+		IsSigned:    signed,
 		RawData:     data,
 	}
 	if pkt.Packet.GetRxTime() > 0 {
@@ -455,14 +482,18 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 			n.base.log.Debug("failed to unmarshal NodeInfo", "error", err)
 			return
 		}
-		n.db.Update(from, func(info *pb.NodeInfo) {
-			info.User = user
-			// Remember which of our channels this node is reachable on.
-			if idx, ok := n.base.channelIndex(channelName); ok {
-				info.Channel = idx
-			}
-		})
-		n.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
+		if n.base.pinIdentity(from, user, evt.IsSigned) {
+			n.db.Update(from, func(info *pb.NodeInfo) {
+				info.User = user
+				// Remember which of our channels this node is reachable on.
+				if idx, ok := n.base.channelIndex(channelName); ok {
+					info.Channel = idx
+				}
+			})
+			n.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
+		} else {
+			n.base.log.Debug("ignoring unsigned NodeInfo from a node that previously signed", "from", evt.From)
+		}
 
 		// Respond to NodeInfo requests with our own NodeInfo
 		if data.WantResponse && n.base.throttle.canRespond(core.NodeID(from), pb.PortNum_NODEINFO_APP) {

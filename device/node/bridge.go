@@ -57,6 +57,18 @@ type BridgeConfig struct {
 	// and for the bridge's own key when it advertises NodeInfo.
 	PublicKeyForNode func(core.NodeID) []byte
 
+	// SignaturePolicy controls how received packets are authenticated. The zero
+	// value is COMPATIBLE, the firmware wire default: unsigned packets are
+	// accepted, malformed or invalid signatures are dropped. Outbound packets are
+	// signed whenever PrivateKeyForNode supplies a key for the sending identity.
+	SignaturePolicy pb.Config_SecurityConfig_PacketSignaturePolicy
+
+	// Licensed marks the bridge's identities as licensed (amateur radio)
+	// operators. Licensed traffic stays plaintext, so firmware signs unicasts as
+	// well as broadcasts and expects the same of peers. Applies to every managed
+	// node; firmware has no per-identity notion of this either.
+	Licensed bool
+
 	// NodeInfoForNode returns the long name, short name, and public key for a managed node.
 	// Used for auto-responding to NodeInfo WantResponse on behalf of managed nodes.
 	// Return ok=false if the node should not auto-respond.
@@ -189,6 +201,27 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 		Logger:    cfg.Logger,
 	})
 	b.base.db = b.db
+	b.base.signaturePolicy = cfg.SignaturePolicy
+	b.base.licensed = cfg.Licensed
+	b.base.privateKeyFor = func(id core.NodeID) []byte {
+		if cfg.PrivateKeyForNode == nil {
+			return nil
+		}
+		return cfg.PrivateKeyForNode(id)
+	}
+	// The consumer's own key store is authoritative; a key learned from a NodeInfo
+	// is the fallback, pinned by pinIdentity once held.
+	b.base.publicKeyFor = func(id core.NodeID) []byte {
+		if cfg.PublicKeyForNode != nil {
+			if key := cfg.PublicKeyForNode(id); key != nil {
+				return key
+			}
+		}
+		if info := b.db.Get(id.Uint32()); info != nil && info.User != nil {
+			return info.User.PublicKey
+		}
+		return nil
+	}
 
 	return b, nil
 }
@@ -380,6 +413,12 @@ func (b *BridgeNode) tryDecryptPKI(pkt *pb.MeshPacket) (*pb.Data, error) {
 // or already-decoded packets). managedTo is the managed node this packet was
 // addressed to (for PKI unicast), or 0 for PSK/broadcast packets.
 func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channelName string, channelKey *string, isPKI bool, managedTo core.NodeID) {
+	signed, ok := b.base.checkSignaturePolicy(pkt.Packet, data, isPKI)
+	if !ok {
+		b.base.log.Debug("dropping packet under signature policy",
+			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
+		return
+	}
 	via := gatewayNode(pkt)
 	evt := event.Event{
 		ChannelName:   channelName,
@@ -391,6 +430,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		PacketID:      pkt.Packet.Id,
 		Portnum:       data.Portnum,
 		IsPKI:         isPKI,
+		IsSigned:      signed,
 		RawData:       data,
 		ManagedNodeID: managedTo,
 		WantAck:       pkt.Packet.WantAck,
@@ -424,14 +464,18 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			b.base.log.Debug("failed to unmarshal NodeInfo", "error", err)
 			return
 		}
-		b.db.Update(from, func(info *pb.NodeInfo) {
-			info.User = user
-			// Remember which of our channels this node is reachable on.
-			if idx, ok := b.base.channelIndex(channelName); ok {
-				info.Channel = idx
-			}
-		})
-		b.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
+		if b.base.pinIdentity(from, user, evt.IsSigned) {
+			b.db.Update(from, func(info *pb.NodeInfo) {
+				info.User = user
+				// Remember which of our channels this node is reachable on.
+				if idx, ok := b.base.channelIndex(channelName); ok {
+					info.Channel = idx
+				}
+			})
+			b.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
+		} else {
+			b.base.log.Debug("ignoring unsigned NodeInfo from a node that previously signed", "from", evt.From)
+		}
 
 		// Auto-respond to NodeInfo WantResponse on behalf of managed nodes
 		if data.WantResponse {

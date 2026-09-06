@@ -29,6 +29,11 @@ const (
 	// XEdDSASignatureSize is the byte length of an XEdDSA signature.
 	XEdDSASignatureSize = 64
 
+	// XEdDSASignatureFieldBytes is what the signature adds to an encoded Data: one
+	// tag byte (field 10 is below 16), one length byte (64 is below 128), and the
+	// signature. Firmware asserts this stays exact; the receive policy depends on it.
+	XEdDSASignatureFieldBytes = XEdDSASignatureSize + 2
+
 	// xeddsaRandomSize is the length of the random value mixed into the nonce.
 	xeddsaRandomSize = 32
 )

@@ -32,4 +32,10 @@ const (
 
 	// PublicKeySize is the byte length of a node's X25519 identity public key.
 	PublicKeySize = crypto.PublicKeySize
+
+	// MaxLoraPayload is the largest frame a LoRa radio can carry, header included.
+	MaxLoraPayload = 255
+
+	// LoraHeaderLength is the size of the unencrypted packet header on the air.
+	LoraHeaderLength = 16
 )

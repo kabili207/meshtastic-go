@@ -16,7 +16,7 @@ Work is on branch `feature/protobufs-2.8`, branched from `main`.
 | --- | --- |
 | 1. Protobuf bump | Done |
 | 2. Identity from public key | Done |
-| 3. XEdDSA signing | Primitives done and cross-checked; policy layer not started |
+| 3. XEdDSA signing | Done |
 | 4. Position precision clamping | Done |
 | 5. Features and hardening | UDP, MQTT hardening, channel tracking done; region presets, MeshBeacon, geofences remain |
 
@@ -249,6 +249,37 @@ reads as a usable conformance spec. Port its vectors rather than inventing our o
 
 **Verify:** vectors from the firmware test suite, covering each policy mode, the
 malformed-length drop, and the first-contact bootstrap path.
+
+### Outcome
+
+The primitives live in `core/crypto/xeddsa.go`, cross-checked byte for byte against
+the library the firmware links (six signature vectors covering both branches of the
+scalar negation, plus one packet-level vector through `buildSigningBuffer`). The
+policy layer is `device/node/signing.go`, shared by `Node` and `BridgeNode` through
+`baseNode`. Both configs gain `SignaturePolicy` (zero value `COMPATIBLE`) and
+`Licensed`. `event.Event` gains `IsSigned`, set only from our own verification.
+
+Reading the firmware more closely turned up a rule the plan did not have, and
+without it the rest is hollow: `NodeDB::updateUser` refuses to let an unsigned
+NodeInfo replace a public key it already holds, and refuses identity writes
+entirely from a known signer sending unsigned. Otherwise a forger plants a key with
+an unsigned NodeInfo and then signs with it. `pinIdentity` applies both rules ahead
+of the NodeInfo handlers. It also covers firmware #11432, an empty key in an unsigned
+NodeInfo erasing a stored one.
+
+The known-signer state `BALANCED` needs is `NodeInfo.HasXeddsaSigned`, a field the
+2.8 protobufs added, so no schema work was needed after all. The bridge's
+`PublicKeyForNode` callback is treated as authoritative, with a key learned from a
+NodeInfo as the pinned fallback.
+
+Two firmware details were confirmed rather than assumed. `canonicalSignableSize`
+re-decodes typed payloads with `DiscardUnknown` before sizing, so unknown-field
+padding cannot inflate an unsigned broadcast past the signable budget. And the
+inbound `xeddsa_signed` flag is cleared at the UDP and MQTT transports and
+overwritten by the pipeline's own verdict, never read.
+
+`Licensed` is one flag for the whole bridge rather than per managed identity;
+firmware has a single `owner.is_licensed` too.
 
 ---
 
