@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/event"
 	"github.com/kabili207/meshtastic-go/transport"
+	"github.com/kabili207/meshtastic-go/transport/stream"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -908,4 +910,56 @@ func TestMeshBeaconReceived(t *testing.T) {
 			t.Errorf("an empty beacon produced an event: %+v", got)
 		}
 	})
+}
+
+// Firmware 2.8 sends the region preset map right after metadata and before the
+// first channel; a client that reads it at the wrong point will not constrain
+// region and preset choices.
+func TestHandshakeSendsRegionPresetsAfterMetadata(t *testing.T) {
+	n := newTestNode(t, newMockTransport())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := stream.NewClientConn(n.Conn(ctx))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := conn.Write(&pb.ToRadio{PayloadVariant: &pb.ToRadio_WantConfigId{WantConfigId: 42}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var order []string
+	var presets *pb.LoRaRegionPresetMap
+handshake:
+	for {
+		var fr pb.FromRadio
+		if err := conn.Read(&fr); err != nil {
+			t.Fatalf("reading handshake after %v: %v", order, err)
+		}
+		switch v := fr.PayloadVariant.(type) {
+		case *pb.FromRadio_Metadata:
+			order = append(order, "metadata")
+		case *pb.FromRadio_RegionPresets:
+			order = append(order, "region_presets")
+			presets = v.RegionPresets
+		case *pb.FromRadio_Channel:
+			order = append(order, "channel")
+		case *pb.FromRadio_ConfigCompleteId:
+			break handshake
+		}
+	}
+
+	metadataAt := slices.Index(order, "metadata")
+	presetsAt := slices.Index(order, "region_presets")
+	channelAt := slices.Index(order, "channel")
+	if metadataAt < 0 || presetsAt < 0 || channelAt < 0 {
+		t.Fatalf("handshake missing a stage: %v", order)
+	}
+	if !(metadataAt < presetsAt && presetsAt < channelAt) {
+		t.Errorf("order = %v, want metadata before region_presets before channel", order)
+	}
+	if presets == nil || len(presets.Groups) == 0 || len(presets.RegionGroups) == 0 {
+		t.Errorf("region preset map was empty: %v", presets)
+	}
 }

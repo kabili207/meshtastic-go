@@ -18,7 +18,7 @@ Work is on branch `feature/protobufs-2.8`, branched from `main`.
 | 2. Identity from public key | Done |
 | 3. XEdDSA signing | Done |
 | 4. Position precision clamping | Done |
-| 5. Features and hardening | Done except region presets in the client handshake |
+| 5. Features and hardening | Done |
 
 Build, vet, and the full test suite pass against protobufs v2.8.0.
 
@@ -411,7 +411,7 @@ One deliberate difference: firmware rejects only `from == 0` and the broadcast
 address here, while we reject the whole reserved range (`IsReservedID`). Firmware
 never assigns a node number below 4, so a `from` of 1 to 3 is a forgery either way.
 
-### Region presets in the client handshake
+### Region presets in the client handshake (done)
 
 `FromRadio.region_presets = 19` carries a `LoRaRegionPresetMap` so client UIs can
 prevent illegal region and preset combinations. The firmware `PhoneAPI` state enum
@@ -421,8 +421,27 @@ confirms the ordering:
 metadata -> STATE_SEND_REGION_PRESETS -> channels -> config -> moduleconfig
 ```
 
-Our `device/clientapi/server.go` already follows that sequence, so this is a clean
-insertion. The source table is `getRegionPresetMap()` at `RadioInterface.cpp:688`.
+`clientapi` now sends it immediately after metadata. The map comes from
+`lora.RegionPresetMap`, built from a transcription of the region table in
+`RadioInterface.cpp` by the same grouping loop firmware uses: regions sharing a
+profile and default preset share a group, referenced by index, so the whole map fits
+one packet within the nanopb caps (8 groups, 38 regions, 11 presets per group).
+
+The transcription is the risky part (34 regions), so it was cross-checked by
+compiling the firmware's own table and loop natively and comparing the output line
+for line: six groups and thirty-four mappings match exactly.
+
+Three details from the firmware that the port preserves:
+
+- Grouping keys on the *profile*, not the preset list. `PROFILE_NARROW` and
+  `PROFILE_HAM_100KHZ` share the same two presets but differ in licensing, and keying
+  on the list would merge the ham 70 cm regions into an unlicensed group.
+- The EU 868 trio (`EU_868`, `EU_866`, `EU_N_868`) own mutually exclusive preset
+  lists, and choosing a sibling's preset swaps the region. Each therefore advertises
+  the trio's union, while on-device enforcement still uses its own list. They land in
+  three groups with identical presets and different defaults, which is correct.
+- `UA_868` is deprecated and has no table entry, so it gets no mapping. The proto
+  defines an absent region as unconstrained, so that is the right outcome, not a gap.
 
 ### MeshBeacon (done)
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/kabili207/meshtastic-go/core"
+	"github.com/kabili207/meshtastic-go/core/lora"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/transport/stream"
 	"golang.org/x/sync/errgroup"
@@ -236,6 +237,17 @@ func (s *Server) handleHandshake(conn *stream.Conn, configID uint32) error {
 		},
 	}); err != nil {
 		return fmt.Errorf("writing Metadata: %w", err)
+	}
+
+	// Send the region-to-preset map, right after metadata and before the first
+	// channel, where firmware 2.8 sends it. Clients use it to refuse an illegal
+	// region and preset pairing.
+	if err := conn.Write(&pb.FromRadio{
+		PayloadVariant: &pb.FromRadio_RegionPresets{
+			RegionPresets: lora.RegionPresetMap(),
+		},
+	}); err != nil {
+		return fmt.Errorf("writing RegionPresets: %w", err)
 	}
 
 	// Send self node info
