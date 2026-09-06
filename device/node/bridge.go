@@ -240,6 +240,19 @@ func (b *BridgeNode) AddChannel(name, keyStr string) error {
 	return nil
 }
 
+// SetNodeChannel records that nodeID was last heard on the named channel, as
+// if its NodeInfo had arrived there, so a consumer with persistent storage can
+// restore unicast routing after a restart. The channel must already be
+// registered; reports false otherwise. Marks the node as heard now.
+func (b *BridgeNode) SetNodeChannel(nodeID core.NodeID, channelName string) bool {
+	idx, ok := b.base.channelIndex(channelName)
+	if !ok {
+		return false
+	}
+	b.db.Update(nodeID.Uint32(), func(info *pb.NodeInfo) { info.Channel = idx })
+	return true
+}
+
 // NodeDB returns the bridge's node database for external inspection.
 func (b *BridgeNode) NodeDB() *nodedb.NodeDB {
 	return b.db

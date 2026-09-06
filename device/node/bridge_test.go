@@ -160,3 +160,23 @@ func TestBridgeRuntimeChannelTrackedForUnicast(t *testing.T) {
 		t.Errorf("DM went out on %q, want Later", got)
 	}
 }
+
+func TestBridgeSetNodeChannelSeedsUnicastRouting(t *testing.T) {
+	mt := newMockTransport()
+	b := newTestBridge(t, mt)
+	if err := b.AddChannel("Shared", "AQ=="); err != nil {
+		t.Fatal(err)
+	}
+	if b.SetNodeChannel(0xCC, "NotRegistered") {
+		t.Error("SetNodeChannel accepted an unregistered channel")
+	}
+	if !b.SetNodeChannel(0xCC, "Shared") {
+		t.Fatal("SetNodeChannel rejected a registered channel")
+	}
+	if _, err := b.SendTextAs(context.Background(), b.cfg.NodeID, 0xCC, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := mt.lastSent().channel; got != "Shared" {
+		t.Errorf("DM went out on %q, want Shared", got)
+	}
+}
