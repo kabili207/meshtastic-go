@@ -686,3 +686,34 @@ func TestEventTimestamp_UsesRxTime(t *testing.T) {
 		t.Errorf("got timestamp %v, want %v", got.Timestamp, expected)
 	}
 }
+
+// A packet claiming our own node ID is either our own send echoed back (UDP multicast
+// loops back by default) or a spoof. Firmware drops both before anything sees them.
+func TestSelfOriginPacketDropped(t *testing.T) {
+	mt := newMockTransport()
+	var got *event.TextMessage
+	n := newTestNode(t, mt, func(c *Config) {
+		c.EventHandlers = []event.Handler{func(evt any) {
+			if e, ok := evt.(*event.TextMessage); ok {
+				got = e
+			}
+		}}
+	})
+
+	inject(n, mt, transport.NetworkPacket{
+		Packet: &pb.MeshPacket{
+			Id:   77,
+			From: 0x12345678, // the test node's own ID
+			PayloadVariant: &pb.MeshPacket_Decoded{
+				Decoded: &pb.Data{
+					Portnum: pb.PortNum_TEXT_MESSAGE_APP,
+					Payload: []byte("echo"),
+				},
+			},
+		},
+	})
+
+	if got != nil {
+		t.Errorf("a packet claiming our own ID produced an event: %q", got.Message)
+	}
+}

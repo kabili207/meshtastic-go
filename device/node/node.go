@@ -378,21 +378,28 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		return
 	}
 
-	// 2. Forward raw packet to all connected clients (before decryption)
+	// 2. Drop packets claiming our own identity: an echo of our own send, or a spoof.
+	// Firmware rejects these before they reach the router or any client.
+	if core.NodeID(pkt.Packet.From) == n.cfg.NodeID {
+		n.base.log.Debug("dropping packet claiming our own node ID", "packetID", pkt.Packet.Id)
+		return
+	}
+
+	// 3. Forward raw packet to all connected clients (before decryption)
 	n.api.DispatchToClients(&pb.FromRadio{
 		PayloadVariant: &pb.FromRadio_Packet{
 			Packet: pkt.Packet,
 		},
 	})
 
-	// 3. If already decoded, process directly
+	// 4. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
 		channelName := n.base.channels.LookupName(pkt.Packet.Channel)
 		n.processDecoded(pkt, decoded, channelName, false)
 		return
 	}
 
-	// 4. Try PKI decryption (channel==0, unicast to this node)
+	// 5. Try PKI decryption (channel==0, unicast to this node)
 	if n.shouldTryPKI(pkt.Packet) {
 		data, err := n.tryDecryptPKI(pkt.Packet)
 		if err == nil && data != nil {
@@ -402,7 +409,7 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		n.base.log.Debug("PKI decryption failed, falling back to PSK", "error", err)
 	}
 
-	// 5. Try PSK decryption via channel registry
+	// 6. Try PSK decryption via channel registry
 	ch, ok := n.base.channels.Lookup(pkt.Packet.Channel)
 	if !ok {
 		n.base.log.Debug("unknown channel hash", "hash", pkt.Packet.Channel)

@@ -256,9 +256,9 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 		return
 	}
 
-	// 2. Self-echo filter: drop packets where From is a managed node
+	// 2. Self-echo filter: drop packets where From is the bridge or a managed node
 	from := core.NodeID(pkt.Packet.From)
-	if b.cfg.IsManagedNode(from) {
+	if from == b.cfg.NodeID || b.cfg.IsManagedNode(from) {
 		b.base.log.Debug("dropping self-echo from managed node", "from", from)
 		return
 	}

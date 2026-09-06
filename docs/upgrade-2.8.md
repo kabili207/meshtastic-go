@@ -16,11 +16,14 @@ Work is on branch `feature/protobufs-2.8`, branched from `main`.
 | --- | --- |
 | 1. Protobuf bump | Done |
 | 2. Identity from public key | Done |
-| 3. XEdDSA signing | Not started |
+| 3. XEdDSA signing | Primitives done and cross-checked; policy layer not started |
 | 4. Position precision clamping | Done |
-| 5. Features and hardening | Not started |
+| 5. Features and hardening | UDP multicast done; rest not started |
 
 Build, vet, and the full test suite pass against protobufs v2.8.0.
+
+The UDP work was pulled forward after a fleet upgrade to 2.8 exposed the multicast
+address change as an outright break. It is done: see "UDP multicast" under phase 5.
 
 Two things turned up during phase 1 that are not in the original plan:
 
@@ -292,6 +295,39 @@ against values computed from the C implementation.
 
 Effort: medium, and separable. Risk: low. Each item is independent.
 
+### UDP multicast (done)
+
+Firmware 2.8 moved the multicast group from `224.0.0.69` to `239.0.0.69` (PR #8612,
+2026-07-25). `224.0.0.0/24` is the IANA local-control block and at least one access
+point refused to forward it; `239.0.0.0/8` is the administratively scoped range
+application multicast is meant to use. Upstream rejected a transition period: "Might
+as well break it for 2.8, as there's already interop issues between 2.7 and 2.8."
+
+Our transport now defaults to the new group. `udp.Config.MulticastIP` overrides it,
+and `udp.LegacyMulticastIP` names the old one for anyone still talking to 2.7 nodes.
+A mixed network needs one transport per group; joining both was not built.
+
+Firmware's UDP handler also gained ingress gates, since a LAN packet carries no
+authenticity of its own. `sanitizeInbound` in the transport mirrors them:
+
+| Gate | Effect |
+| --- | --- |
+| Only the `encrypted` payload variant is accepted | An already-decoded LAN packet was previously processed as if we had decrypted it |
+| `from == 0` dropped | Never a legitimate sender |
+| `hop_limit` or `hop_start` above 7 dropped | Not relayable |
+| `pki_encrypted` and `public_key` cleared | Only our own decryption may set these |
+| `rx_rssi` presence and `rx_snr` cleared | The values belonged to whichever node put the packet on the wire |
+| `transport_mechanism` set to multicast UDP | Consumers can tell UDP arrivals apart |
+
+The remaining firmware gate, `from == self`, needs an identity the transport does
+not have, so both node pipelines drop it as their step 2, ahead of client dispatch.
+That applies to every transport, not only UDP, which is also what firmware does. A
+side effect is that our own multicast sends, which the kernel loops back to us,
+are now dropped by identity rather than relying on dedup.
+
+`TRANSPORT_UNICAST_UDP = 8` is defined in the proto but nothing in firmware 2.8
+sets or reads it. Nothing to do.
+
 ### MQTT downlink hardening
 
 Firmware now forces `pki_encrypted = false` on every MQTT downlink, on the grounds
@@ -387,6 +423,6 @@ its own review.
 2. **Version bump.** The `core/proto` changes are breaking for downstream
    importers even though our own code survives. Minor bump, or hold 2.8 support on
    a branch until the firmware leaves alpha?
-3. **Signing default.** When we implement phase 3, do we default to `COMPATIBLE`
-   to match the firmware wire default, or expose it as required configuration with
-   no default?
+3. **Signing default.** Resolved: `COMPATIBLE`. It is the firmware wire default and
+   the enum's zero value, so a zero-valued config field means it without ceremony.
+   Callers opt into `BALANCED` or `STRICT`.

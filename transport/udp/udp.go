@@ -4,20 +4,27 @@ package udp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/kabili207/meshtastic-go/core"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/transport"
 	"google.golang.org/protobuf/proto"
 )
 
 const (
-	// MulticastIP is the multicast group address used by Meshtastic devices.
-	MulticastIP = "224.0.0.69"
+	// MulticastIP is the multicast group firmware 2.8 and later uses. It sits in the
+	// administratively scoped range, which some access points require.
+	MulticastIP = "239.0.0.69"
+	// LegacyMulticastIP is the group firmware 2.6 and 2.7 used. Upstream moved off it
+	// without a transition period, so a mixed network needs one transport per group.
+	LegacyMulticastIP = "224.0.0.69"
 	// MulticastPort is the port used by Meshtastic devices for UDP multicast.
 	MulticastPort = 4403
 
@@ -29,11 +36,15 @@ const (
 type Config struct {
 	// Logger is the logger to use. If nil, slog.Default() is used.
 	Logger *slog.Logger
+	// MulticastIP is the multicast group to join and send to. Defaults to
+	// MulticastIP; set LegacyMulticastIP to talk to pre-2.8 firmware.
+	MulticastIP string
 }
 
 // Transport implements a raw transport over UDP multicast.
 type Transport struct {
 	conn         *net.UDPConn
+	group        *net.UDPAddr
 	log          *slog.Logger
 	running      atomic.Bool
 	listening    atomic.Bool
@@ -53,7 +64,12 @@ func New(cfg Config) *Transport {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	ip := cfg.MulticastIP
+	if ip == "" {
+		ip = MulticastIP
+	}
 	return &Transport{
+		group:    &net.UDPAddr{IP: net.ParseIP(ip), Port: MulticastPort},
 		log:      logger.WithGroup("udp"),
 		stopChan: make(chan struct{}),
 	}
@@ -116,12 +132,7 @@ func (t *Transport) SendPacket(_ string, packet *pb.MeshPacket) error {
 		return err
 	}
 
-	dst := &net.UDPAddr{
-		IP:   net.ParseIP(MulticastIP),
-		Port: MulticastPort,
-	}
-
-	conn, err := net.DialUDP("udp", nil, dst)
+	conn, err := net.DialUDP("udp", nil, t.group)
 	if err != nil {
 		return err
 	}
@@ -190,6 +201,10 @@ func (t *Transport) listenLoop() error {
 				t.log.Warn("unmarshal error", "error", err)
 				continue
 			}
+			if err := sanitizeInbound(msg); err != nil {
+				t.log.Debug("dropping UDP packet", "from", msg.From, "reason", err)
+				continue
+			}
 
 			t.mu.RLock()
 			handler := t.packetHandler
@@ -205,16 +220,38 @@ func (t *Transport) listenLoop() error {
 	}
 }
 
+// sanitizeInbound applies the gates firmware runs on a LAN packet before it reaches
+// the router. UDP carries no authenticity of its own, so anything a peer could set to
+// look trusted is cleared, and anything that can only be a forgery is dropped. The one
+// firmware check missing here is from == self, which needs an identity the transport
+// doesn't have; the node pipelines apply it.
+func sanitizeInbound(msg *pb.MeshPacket) error {
+	if _, ok := msg.GetPayloadVariant().(*pb.MeshPacket_Encrypted); !ok {
+		return errors.New("payload is not encrypted")
+	}
+	if msg.From == 0 {
+		return errors.New("from is zero")
+	}
+	if msg.HopLimit > core.MaxHops || msg.HopStart > core.MaxHops {
+		return fmt.Errorf("hop_limit %d or hop_start %d exceeds %d", msg.HopLimit, msg.HopStart, core.MaxHops)
+	}
+
+	msg.TransportMechanism = pb.MeshPacket_TRANSPORT_MULTICAST_UDP
+	// Only our own decryption may establish these.
+	msg.PkiEncrypted = false
+	msg.PublicKey = nil
+	// No local RF measurement exists for a UDP arrival. Whatever values came in belong
+	// to the node that put the packet on the wire, so clear presence, not just the number.
+	msg.RxSnr = 0
+	msg.RxRssi = nil
+	return nil
+}
+
 func (t *Transport) setupSocket() error {
 	t.reconnectMux.Lock()
 	defer t.reconnectMux.Unlock()
 
-	group := &net.UDPAddr{
-		IP:   net.ParseIP(MulticastIP),
-		Port: MulticastPort,
-	}
-
-	conn, err := net.ListenMulticastUDP("udp", nil, group)
+	conn, err := net.ListenMulticastUDP("udp", nil, t.group)
 	if err != nil {
 		return err
 	}
