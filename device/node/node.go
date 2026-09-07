@@ -167,16 +167,15 @@ func New(cfg Config) (*Node, error) {
 
 	n := &Node{
 		base: baseNode{
-			transport:      cfg.Transport,
-			channels:       channels,
-			dedup:          dedupe.NewDeduplicator(2 * time.Hour),
-			throttle:       newRequestThrottle(),
-			log:            logger,
-			nodeID:         cfg.NodeID,
-			okToMQTT:       cfg.OkToMQTT,
-			hopLimit:       cfg.DefaultHopLimit,
-			primaryChannel: cfg.Channels.Settings[0].Name,
-			channelNames:   channelNamesFrom(cfg.Channels),
+			transport: cfg.Transport,
+			channels:  channels,
+			dedup:     dedupe.NewDeduplicator(2 * time.Hour),
+			throttle:  newRequestThrottle(),
+			log:       logger,
+			nodeID:    cfg.NodeID,
+			okToMQTT:  cfg.OkToMQTT,
+			hopLimit:  cfg.DefaultHopLimit,
+			primary:   core.ChannelFromSettings(cfg.Channels.Settings[0]),
 		},
 		cfg: cfg,
 	}
@@ -223,8 +222,15 @@ func New(cfg Config) (*Node, error) {
 		Nodes:                 n.db,
 		NextPacketID:          n.base.packetIDs.next,
 		OnOutboundPacket: func(ctx context.Context, pkt *pb.MeshPacket) {
-			channelName := n.base.channels.LookupName(pkt.Channel)
-			if err := n.base.sendPacket(ctx, pkt, channelName); err != nil {
+			// A client names the channel by hash; resolve it exactly rather than
+			// through a name that may be shared.
+			var err error
+			if ch, ok := n.base.channels.Lookup(pkt.Channel); ok {
+				err = n.base.sendPacketOn(ctx, pkt, ch)
+			} else {
+				err = n.base.sendPacket(ctx, pkt, "")
+			}
+			if err != nil {
 				n.base.log.Error("failed to send outbound packet", "error", err)
 			}
 		},
@@ -429,8 +435,8 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 
 	// 4. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
-		channelName, _ := n.base.decodedChannel(pkt)
-		n.processDecoded(pkt, decoded, channelName, false)
+		ch, channelName := n.base.decodedChannel(pkt)
+		n.processDecoded(pkt, decoded, ch, channelName, false)
 		return
 	}
 
@@ -438,33 +444,35 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 	if n.shouldTryPKI(pkt.Packet) {
 		data, err := n.tryDecryptPKI(pkt.Packet)
 		if err == nil && data != nil {
-			n.processDecoded(pkt, data, "PKI", true)
+			n.processDecoded(pkt, data, nil, "PKI", true)
 			return
 		}
 		n.base.log.Debug("PKI decryption failed, falling back to PSK", "error", err)
 	}
 
-	// 6. Try PSK decryption via channel registry
-	ch, ok := n.base.channels.Lookup(pkt.Packet.Channel)
-	if !ok {
+	// 6. Try PSK decryption with every registered channel matching the hash. The
+	// one-byte hash collides, so like firmware we try each and keep the first
+	// that yields a plausible Data; a wrong key that happens to decode reports
+	// UNKNOWN_APP.
+	candidates := n.base.channels.LookupAll(pkt.Packet.Channel)
+	if len(candidates) == 0 {
 		n.base.log.Debug("unknown channel hash", "hash", pkt.Packet.Channel)
 		return
 	}
-
-	data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
-	if err != nil {
-		n.base.log.Debug("PSK decryption failed",
-			"channel", ch.GetName(),
-			"error", err)
+	for _, ch := range candidates {
+		data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
+		if err != nil || data.Portnum == pb.PortNum_UNKNOWN_APP {
+			continue
+		}
+		n.processDecoded(pkt, data, ch, ch.GetName(), false)
 		return
 	}
-
-	n.processDecoded(pkt, data, ch.GetName(), false)
+	n.base.log.Debug("PSK decryption failed on every matching channel", "hash", pkt.Packet.Channel)
 }
 
 // processDecoded handles a successfully decoded packet: updates the nodedb
 // and emits typed events.
-func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channelName string, isPKI bool) {
+func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch core.ChannelDef, channelName string, isPKI bool) {
 	signed, ok := n.base.checkSignaturePolicy(pkt.Packet, data, isPKI)
 	if !ok {
 		n.base.log.Debug("dropping packet under signature policy",
@@ -473,6 +481,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 	}
 	evt := event.Event{
 		ChannelName: channelName,
+		Channel:     ch,
 		From:        core.NodeID(pkt.Packet.From),
 		To:          core.NodeID(pkt.Packet.To),
 		Timestamp:   time.Now(),
@@ -496,13 +505,11 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channe
 			return
 		}
 		if n.base.pinIdentity(from, user, evt.IsSigned) {
-			n.db.Update(from, func(info *pb.NodeInfo) {
-				info.User = user
-				// Remember which of our channels this node is reachable on.
-				if idx, ok := n.base.channelIndex(channelName); ok {
-					info.Channel = idx
-				}
-			})
+			n.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
+			// Remember which of our channels this node is reachable on.
+			if ch != nil {
+				n.db.SetChannel(from, ch)
+			}
 			n.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
 		} else {
 			n.base.log.Debug("ignoring unsigned NodeInfo from a node that previously signed", "from", evt.From)

@@ -34,9 +34,9 @@ func newMockTransport() *mockTransport {
 	return &mockTransport{connected: true}
 }
 
-func (m *mockTransport) Start(_ context.Context) error       { return nil }
-func (m *mockTransport) Stop() error                          { return nil }
-func (m *mockTransport) IsConnected() bool                    { return m.connected }
+func (m *mockTransport) Start(_ context.Context) error               { return nil }
+func (m *mockTransport) Stop() error                                 { return nil }
+func (m *mockTransport) IsConnected() bool                           { return m.connected }
 func (m *mockTransport) SetPacketHandler(fn transport.PacketHandler) { m.handler = fn }
 func (m *mockTransport) SetStateHandler(_ transport.StateHandler)    {}
 func (m *mockTransport) AddChannel(_ string)                         {}
@@ -435,7 +435,12 @@ func TestSendPacket_DefaultsToPrimary(t *testing.T) {
 
 func TestSendPacket_SpecificChannel(t *testing.T) {
 	mt := newMockTransport()
-	n := newTestNode(t, mt)
+	n := newTestNode(t, mt, func(c *Config) {
+		c.Channels = &pb.ChannelSet{Settings: []*pb.ChannelSettings{
+			{Name: "LongFast", Psk: crypto.DefaultKey},
+			{Name: "CustomChannel", Psk: crypto.DefaultKey},
+		}}
+	})
 
 	err := n.base.sendPacket(context.Background(), &pb.MeshPacket{
 		From: 0x12345678,
@@ -443,9 +448,15 @@ func TestSendPacket_SpecificChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sendPacket error: %v", err)
 	}
-
 	if mt.lastSent().channel != "CustomChannel" {
 		t.Errorf("expected channel %q, got %q", "CustomChannel", mt.lastSent().channel)
+	}
+
+	// An unregistered name used to go out unencrypted on a made-up topic; it is
+	// an error now, since there is no key to encrypt with.
+	err = n.base.sendPacket(context.Background(), &pb.MeshPacket{From: 0x12345678}, "Unregistered")
+	if !errors.Is(err, core.ErrChannelNotFound) {
+		t.Errorf("unregistered channel: err = %v, want ErrChannelNotFound", err)
 	}
 }
 
@@ -751,8 +762,8 @@ func TestDMUsesChannelNodeInfoArrivedOn(t *testing.T) {
 		},
 	})
 
-	if info := n.NodeDB().Get(0xAA); info == nil || info.Channel != 1 {
-		t.Fatalf("nodedb channel index = %v, want 1", info)
+	if ch, ok := n.NodeDB().Channel(0xAA); !ok || ch.GetName() != "SecondCh" {
+		t.Fatalf("nodedb channel = %v, want SecondCh", ch)
 	}
 
 	if err := n.SendText(context.Background(), 0xAA, "hi"); err != nil {
@@ -776,7 +787,7 @@ func TestDMChannelFallbacks(t *testing.T) {
 			},
 		}
 	})
-	n.NodeDB().Update(0xAA, func(info *pb.NodeInfo) { info.Channel = 1 })
+	n.NodeDB().SetChannel(0xAA, core.NewChannelWithKey("SecondCh", secondKey))
 
 	t.Run("broadcast ignores the nodedb", func(t *testing.T) {
 		if err := n.SendText(context.Background(), core.BroadcastNodeID, "all"); err != nil {
@@ -807,14 +818,20 @@ func TestDMChannelFallbacks(t *testing.T) {
 }
 
 // A PKI-decrypted NodeInfo arrives on the "PKI" pseudo-channel, which is not a
-// configured channel and must not be stored as an index.
+// registered channel and must not be recorded as one.
 func TestNodeInfoOnPKIDoesNotStoreChannel(t *testing.T) {
 	mt := newMockTransport()
 	n := newTestNode(t, mt)
-	n.NodeDB().Update(0xAA, func(info *pb.NodeInfo) { info.Channel = 0 })
-
-	if _, ok := n.base.channelIndex("PKI"); ok {
-		t.Fatal("PKI resolved to a channel index")
+	userBytes, _ := proto.Marshal(&pb.User{LongName: "Peer"})
+	inject(n, mt, transport.NetworkPacket{
+		Channel: "PKI",
+		Packet: &pb.MeshPacket{
+			Id: 8, From: 0xAA,
+			PayloadVariant: &pb.MeshPacket_Decoded{Decoded: &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes}},
+		},
+	})
+	if ch, ok := n.NodeDB().Channel(0xAA); ok {
+		t.Fatalf("PKI pseudo-channel was recorded as %v", ch)
 	}
 }
 

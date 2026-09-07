@@ -121,5 +121,5 @@ func (n *Node) sendPKIPacket(ctx context.Context, to core.NodeID, data *pb.Data)
 	n.base.lastSend = time.Now()
 
 	// PKI packets use channel 0; send on primary channel's transport topic
-	return n.base.transport.SendPacket(n.base.primaryChannel, pkt)
+	return n.base.transport.SendPacket(n.base.primary.GetName(), pkt)
 }

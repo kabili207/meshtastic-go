@@ -39,6 +39,10 @@ const (
 	// LoraHeaderLength is the size of the unencrypted packet header on the air.
 	LoraHeaderLength = 16
 
+	// MaxChannels is the number of channel slots a device has. A phone expects a
+	// table of exactly this many during the handshake, disabled slots included.
+	MaxChannels = 8
+
 	// MaxChannelName is the maximum byte length of a channel name.
 	MaxChannelName = 11
 

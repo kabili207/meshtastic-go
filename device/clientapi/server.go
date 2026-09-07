@@ -33,6 +33,10 @@ type NodeInfoProvider interface {
 	SelfInfo() *pb.NodeInfo
 	// All returns all tracked nodes (cloned).
 	All() []*pb.NodeInfo
+	// Channel returns the channel a node was last heard on, if recorded. The
+	// handshake turns it into the NodeInfo.Channel index a phone expects, against
+	// the channel table it sends.
+	Channel(nodeID uint32) (core.ChannelDef, bool)
 }
 
 // PacketIDFunc returns the next packet ID for outgoing packets.
@@ -130,6 +134,25 @@ func (s *Server) Conn(ctx context.Context) net.Conn {
 		}
 	}()
 	return clientConn
+}
+
+// channelIndexFor maps the channel a node was last heard on to its index in the
+// table the handshake sends. Zero, the primary, when nothing is recorded or the
+// channel is not in the configured table (a runtime-added channel, for instance).
+func (s *Server) channelIndexFor(nodeID uint32) uint32 {
+	ch, ok := s.cfg.Nodes.Channel(nodeID)
+	if !ok {
+		return 0
+	}
+	for i, settings := range s.cfg.Channels.Settings {
+		if i >= core.MaxChannels {
+			break
+		}
+		if core.SameChannel(core.ChannelFromSettings(settings), ch) {
+			return uint32(i)
+		}
+	}
+	return 0
 }
 
 func (s *Server) addSubscriber(ch chan<- *pb.FromRadio) {
@@ -259,8 +282,10 @@ func (s *Server) handleHandshake(conn *stream.Conn, configID uint32) error {
 		return fmt.Errorf("writing own NodeInfo: %w", err)
 	}
 
-	// Send all known nodes
+	// Send all known nodes. Each carries the index, into the table sent below, of
+	// the channel it was last heard on, which is how a phone picks a DM channel.
 	for _, nodeInfo := range s.cfg.Nodes.All() {
+		nodeInfo.Channel = s.channelIndexFor(nodeInfo.Num)
 		if err := conn.Write(&pb.FromRadio{
 			PayloadVariant: &pb.FromRadio_NodeInfo{
 				NodeInfo: nodeInfo,
@@ -270,17 +295,20 @@ func (s *Server) handleHandshake(conn *stream.Conn, configID uint32) error {
 		}
 	}
 
-	// Send primary channel
-	if err := conn.Write(&pb.FromRadio{
-		PayloadVariant: &pb.FromRadio_Channel{
-			Channel: &pb.Channel{
-				Index:    0,
-				Settings: &pb.ChannelSettings{},
-				Role:     pb.Channel_PRIMARY,
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("writing Channel: %w", err)
+	// Send the channel table. A phone expects every slot, so unconfigured ones go
+	// out disabled, the way a device reports them.
+	for i := 0; i < core.MaxChannels; i++ {
+		ch := &pb.Channel{Index: int32(i), Role: pb.Channel_DISABLED, Settings: &pb.ChannelSettings{}}
+		if i < len(s.cfg.Channels.Settings) {
+			ch.Settings = s.cfg.Channels.Settings[i]
+			ch.Role = pb.Channel_SECONDARY
+			if i == 0 {
+				ch.Role = pb.Channel_PRIMARY
+			}
+		}
+		if err := conn.Write(&pb.FromRadio{PayloadVariant: &pb.FromRadio_Channel{Channel: ch}}); err != nil {
+			return fmt.Errorf("writing Channel: %w", err)
+		}
 	}
 
 	// Send device config

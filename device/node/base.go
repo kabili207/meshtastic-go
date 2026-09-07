@@ -34,11 +34,9 @@ type baseNode struct {
 	okToMQTT  bool
 	hopLimit  uint32
 
-	// primaryChannel is the name of the first channel in the channel set.
-	primaryChannel string
-	// channelNames is the configured channel set in index order, so a channel
-	// index stored in the nodedb can be mapped back to a name and vice versa.
-	channelNames []string
+	// primary is the first channel in the channel set, used when nothing else
+	// selects one.
+	primary core.ChannelDef
 	// db is consulted when picking the channel for a unicast. Optional.
 	db *nodedb.NodeDB
 
@@ -72,25 +70,41 @@ func (b *baseNode) emitEvent(evt any) {
 	}
 }
 
-// sendPacket stamps a packet ID, applies defaults, encrypts decoded payloads,
-// and sends via the specified channel. If channelName is empty, the primary
-// channel is used.
-func (b *baseNode) sendPacket(_ context.Context, packet *pb.MeshPacket, channelName string) error {
+// sendPacket sends on the channel with the given name, or, when the name is
+// empty, on the channel a unicast destination was last heard on, falling back to
+// the primary. A name shared by more than one registered channel is an error
+// rather than a guess: use sendPacketOn with the exact channel instead.
+func (b *baseNode) sendPacket(ctx context.Context, packet *pb.MeshPacket, channelName string) error {
+	var ch core.ChannelDef
+	if channelName != "" {
+		resolved, err := b.channels.ResolveByName(channelName)
+		if err != nil {
+			return fmt.Errorf("channel %q: %w", channelName, err)
+		}
+		ch = resolved
+	} else {
+		ch = b.channelForDestination(core.NodeID(packet.To), packet.PkiEncrypted)
+	}
+	return b.sendPacketOn(ctx, packet, ch)
+}
+
+// sendPacketWith sends honoring the channel chosen by send options: an exact
+// channel first, then a name, then the destination's channel.
+func (b *baseNode) sendPacketWith(ctx context.Context, packet *pb.MeshPacket, o sendOptions) error {
+	if o.channelDef != nil {
+		return b.sendPacketOn(ctx, packet, o.channelDef)
+	}
+	return b.sendPacket(ctx, packet, o.channel)
+}
+
+// sendPacketOn stamps a packet ID, applies defaults, signs and PSK-encrypts a
+// decoded payload with the channel's key, and sends on that channel's transport
+// topic. A PKI packet is already encrypted; the channel then only names the topic.
+func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch core.ChannelDef) error {
 	packet.Id = b.packetIDs.next()
 
-	if channelName == "" {
-		channelName = b.channelForDestination(core.NodeID(packet.To), packet.PkiEncrypted)
-	}
-
-	// Resolve channel definition for hash and encryption key.
-	var ch core.ChannelDef
-	if !packet.PkiEncrypted {
-		if found, ok := b.channels.LookupByName(channelName); ok {
-			ch = found
-			if packet.Channel == 0 {
-				packet.Channel = ch.GetHash()
-			}
-		}
+	if !packet.PkiEncrypted && packet.Channel == 0 {
+		packet.Channel = ch.GetHash()
 	}
 
 	b.applyPacketDefaults(packet)
@@ -108,7 +122,7 @@ func (b *baseNode) sendPacket(_ context.Context, packet *pb.MeshPacket, channelN
 	}
 
 	// PSK-encrypt decoded payloads so other nodes can receive them.
-	if decoded := packet.GetDecoded(); decoded != nil && ch != nil {
+	if decoded := packet.GetDecoded(); decoded != nil && !packet.PkiEncrypted {
 		if err := encryptDecoded(packet, decoded, ch.GetKeyBytes()); err != nil {
 			return fmt.Errorf("encrypting packet: %w", err)
 		}
@@ -126,41 +140,21 @@ func (b *baseNode) sendPacket(_ context.Context, packet *pb.MeshPacket, channelN
 	}
 	b.lastSend = time.Now()
 
-	return b.transport.SendPacket(channelName, packet)
-}
-
-// channelNamesFrom returns the channel set's names in index order.
-func channelNamesFrom(set *pb.ChannelSet) []string {
-	names := make([]string, 0, len(set.Settings))
-	for _, s := range set.Settings {
-		names = append(names, s.Name)
-	}
-	return names
-}
-
-// channelIndex maps a configured channel name to its index. Names that are not
-// configured channels, such as the "PKI" pseudo-channel, report false.
-func (b *baseNode) channelIndex(name string) (uint32, bool) {
-	for i, n := range b.channelNames {
-		if n == name {
-			return uint32(i), true
-		}
-	}
-	return 0, false
+	return b.transport.SendPacket(ch.GetName(), packet)
 }
 
 // channelForDestination picks the channel for a packet with none specified. A
 // unicast goes out on the channel we last heard the destination's NodeInfo on,
 // which is how firmware reaches a node it shares a secondary channel with.
 // Everything else, and any node we have not heard from, uses the primary.
-func (b *baseNode) channelForDestination(to core.NodeID, pki bool) string {
+func (b *baseNode) channelForDestination(to core.NodeID, pki bool) core.ChannelDef {
 	if pki || to == 0 || to.IsBroadcast() || b.db == nil {
-		return b.primaryChannel
+		return b.primary
 	}
-	if info := b.db.Get(to.Uint32()); info != nil && int(info.Channel) < len(b.channelNames) {
-		return b.channelNames[info.Channel]
+	if ch, ok := b.db.Channel(to.Uint32()); ok {
+		return ch
 	}
-	return b.primaryChannel
+	return b.primary
 }
 
 // applyPacketDefaults fills in HopLimit, HopStart, Priority, and RxTime
@@ -203,17 +197,14 @@ func encryptDecoded(pkt *pb.MeshPacket, data *pb.Data, key []byte) error {
 
 // decodedChannel resolves the channel of an already-decoded packet. Its channel
 // field is a channel index rather than a hash, so the transport's channel name is
-// used when it supplies one, with the hash lookup as a fallback. The registered
-// key is returned so consumers can identify the channel the same way they would
-// for a packet decrypted locally.
-func (b *baseNode) decodedChannel(pkt transport.NetworkPacket) (string, *string) {
+// used when it supplies one, with the hash lookup as a fallback. The definition
+// is nil when the name is unknown or shared by more than one registered channel,
+// since a decoded packet carries nothing that could tell them apart.
+func (b *baseNode) decodedChannel(pkt transport.NetworkPacket) (core.ChannelDef, string) {
 	name := pkt.Channel
 	if name == "" {
 		name = b.channels.LookupName(pkt.Packet.Channel)
 	}
-	if ch, ok := b.channels.LookupByName(name); ok {
-		key := ch.GetKeyString()
-		return name, &key
-	}
-	return name, nil
+	ch, _ := b.channels.LookupByName(name)
+	return ch, name
 }

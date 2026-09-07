@@ -39,7 +39,8 @@ type bridgeSend struct {
 	portnum      pb.PortNum
 	payload      []byte
 	enc          EncryptionMode
-	channel      string // channel name; empty uses the primary channel
+	channel      string          // channel name; empty uses the primary channel
+	channelDef   core.ChannelDef // exact channel; takes precedence over channel
 	replyID      uint32
 	requestID    uint32
 	emoji        uint32
@@ -94,10 +95,18 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 	}
 	b.applyHopLimits(pkt, s.from)
 
-	channelName := s.channel
-	if channelName == "" {
-		channelName = b.base.channelForDestination(s.to, s.enc == EncryptPKI)
+	ch := s.channelDef
+	if ch == nil && s.channel != "" {
+		resolved, err := b.base.channels.ResolveByName(s.channel)
+		if err != nil {
+			return 0, fmt.Errorf("channel %q: %w", s.channel, err)
+		}
+		ch = resolved
 	}
+	if ch == nil {
+		ch = b.base.channelForDestination(s.to, s.enc == EncryptPKI)
+	}
+	channelName := ch.GetName()
 
 	b.base.signOutbound(data, s.from.Uint32(), packetID, s.to, s.enc == EncryptPKI)
 
@@ -107,11 +116,7 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 		pkt.PayloadVariant = &pb.MeshPacket_Decoded{Decoded: data}
 
 	case EncryptPSK:
-		ch, ok := b.base.channels.LookupByName(channelName)
-		if !ok {
-			return 0, fmt.Errorf("unknown channel %q", channelName)
-		}
-		pkt.Channel = crypto.ChannelHash(ch.GetName(), ch.GetKeyBytes())
+		pkt.Channel = ch.GetHash()
 		raw, err := proto.Marshal(data)
 		if err != nil {
 			return 0, fmt.Errorf("marshalling data: %w", err)
@@ -214,10 +219,10 @@ func (b *BridgeNode) SendPositionAs(ctx context.Context, from, to core.NodeID, l
 	}
 	return b.sendAs(ctx, bridgeSend{
 		from: from, to: to,
-		portnum:      pb.PortNum_POSITION_APP,
-		payload:      payload,
-		enc:          encModeFor(o.usePKI),
-		channel:      o.channel,
+		portnum: pb.PortNum_POSITION_APP,
+		payload: payload,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel, channelDef: o.channelDef,
 		wantResponse: o.wantResponse,
 	})
 }
@@ -231,10 +236,10 @@ func (b *BridgeNode) SendTelemetryAs(ctx context.Context, from, to core.NodeID, 
 	}
 	return b.sendAs(ctx, bridgeSend{
 		from: from, to: to,
-		portnum:   pb.PortNum_TELEMETRY_APP,
-		payload:   payload,
-		enc:       encModeFor(o.usePKI),
-		channel:   o.channel,
+		portnum: pb.PortNum_TELEMETRY_APP,
+		payload: payload,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel, channelDef: o.channelDef,
 		requestID: o.requestID,
 	})
 }
@@ -286,7 +291,7 @@ func (b *BridgeNode) SendReactionAs(ctx context.Context, from, to core.NodeID, t
 		portnum: pb.PortNum_TEXT_MESSAGE_APP,
 		payload: []byte(emoji),
 		enc:     encModeFor(o.usePKI),
-		channel: o.channel,
+		channel: o.channel, channelDef: o.channelDef,
 		replyID: targetPacketID,
 		emoji:   1,
 	})
@@ -313,7 +318,7 @@ func (b *BridgeNode) SendWaypointAs(ctx context.Context, from, to core.NodeID, w
 		portnum: pb.PortNum_WAYPOINT_APP,
 		payload: wpBytes,
 		enc:     encModeFor(o.usePKI),
-		channel: o.channel,
+		channel: o.channel, channelDef: o.channelDef,
 		wantAck: o.wantAck,
 	})
 }
@@ -335,7 +340,7 @@ func (b *BridgeNode) SendMeshBeaconAs(ctx context.Context, from core.NodeID, bea
 		portnum: pb.PortNum_MESH_BEACON_APP,
 		payload: payload,
 		enc:     encModeFor(o.usePKI),
-		channel: o.channel,
+		channel: o.channel, channelDef: o.channelDef,
 		wantAck: o.wantAck,
 	})
 }
@@ -375,10 +380,10 @@ func (b *BridgeNode) RequestTracerouteAs(ctx context.Context, from, to core.Node
 	}
 	return b.sendAs(ctx, bridgeSend{
 		from: from, to: to,
-		portnum:      pb.PortNum_TRACEROUTE_APP,
-		payload:      payload,
-		enc:          encModeFor(o.usePKI),
-		channel:      o.channel,
+		portnum: pb.PortNum_TRACEROUTE_APP,
+		payload: payload,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel, channelDef: o.channelDef,
 		wantResponse: true,
 	})
 }
@@ -399,7 +404,7 @@ func (b *BridgeNode) SendMapReportAs(ctx context.Context, from core.NodeID, long
 
 	// TODO: derive region from the MQTT root topic rather than hardcoding US.
 	region := pb.Config_LoRaConfig_RegionCode_value["US"]
-	presetName := strcase.ToScreamingSnake(b.base.primaryChannel)
+	presetName := strcase.ToScreamingSnake(b.base.primary.GetName())
 	preset, hasDefaultChannel := pb.Config_LoRaConfig_ModemPreset_value[presetName]
 
 	mr := &pb.MapReport{
@@ -476,10 +481,10 @@ func (b *BridgeNode) SendNeighborInfoResponseAs(ctx context.Context, from, to co
 	}
 	return b.sendAs(ctx, bridgeSend{
 		from: from, to: to,
-		portnum:   pb.PortNum_NEIGHBORINFO_APP,
-		payload:   payload,
-		enc:       encModeFor(o.usePKI),
-		channel:   o.channel,
+		portnum: pb.PortNum_NEIGHBORINFO_APP,
+		payload: payload,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel, channelDef: o.channelDef,
 		requestID: requestID,
 	})
 }

@@ -396,6 +396,53 @@ configured index and is not stored.
 The transport-agnostic `nodedb.ProcessPacket` only has a PSK, not a name, so it
 cannot resolve an index and is unchanged.
 
+### Channel identity (done)
+
+Not a 2.8 change, but the last thing to settle before tagging, because it changes
+the public send API. A channel's identity is its name and key together; the library
+keyed the registry on the wire hash but used the name alone as the send-side handle.
+Reading the code turned up two things sharper than open decision 4 described:
+
+- `LookupByName` iterated a Go map, so with two same-name channels it was not
+  merely arbitrary but non-deterministic across process starts. That is why the
+  traceroute symptom looked flaky rather than consistently wrong.
+- `Register` silently overwrote on a one-byte hash collision, so a second channel
+  with a colliding hash replaced the first. Firmware tries every local channel with
+  a matching hash and keeps the one that decrypts.
+
+What changed:
+
+- `ChannelRegistry` keeps every channel, indexed by hash and by name. `LookupAll`
+  returns all candidates for a hash; both receive pipelines try each and keep the
+  first that decodes to a known portnum, as firmware's `perhapsDecode` does.
+  `ResolveByName` fails with `ErrChannelAmbiguous` on a shared name instead of
+  guessing; `LookupPair` selects by exact name and key. Re-registering an identical
+  channel replaces it in place.
+- `WithChannelDef` selects a channel exactly. `WithChannel` by name still works when
+  the name is unique and errors otherwise, since a send on the wrong key is silent.
+  An unregistered name used to go out unencrypted on a made-up topic; it is an error
+  now.
+- `event.Event` gains `Channel core.ChannelDef`, the value to hand back to a reply.
+  All bridge responders use it, which fixes traceroute.
+- The per-node record moved out of `NodeInfo.Channel` into the nodedb as a
+  `ChannelDef`, so it survives runtime channel registration and distinguishes
+  same-name channels. `SetNodeChannel` takes a `ChannelDef`.
+- The phone-facing index is derived rather than stored. The handshake now sends all
+  eight channel slots with configured channels at their indexes and the rest
+  disabled, as a device does, and each NodeInfo's `Channel` is the index of the
+  recorded channel within that table. Previously the handshake sent one empty slot,
+  so no stored index could have meant anything to a phone anyway.
+
+The transport contract is unchanged: `SendPacket` still takes a name, because MQTT
+needs the name for the topic and same-name channels sharing a topic is the protocol,
+not our bug.
+
+Consumer impact is three call sites: `WithChannel` on a shared name (switch to
+`WithChannelDef`, or pass the event's `Channel` when replying), `SetNodeChannel`
+(pass a `ChannelDef`, which a name-and-key store can build with
+`core.NewChannelWithKey`), and any code that read `NodeInfo.Channel` as an index
+(read the nodedb's `Channel` instead).
+
 ### MQTT downlink hardening (done)
 
 Firmware's `onReceiveProto` is stronger than the plan described. It does not clear
@@ -572,14 +619,10 @@ its own review.
 3. **Signing default.** Resolved: `COMPATIBLE`. It is the firmware wire default and
    the enum's zero value, so a zero-valued config field means it without ceremony.
    Callers opt into `BALANCED` or `STRICT`.
-4. **Channel identity is name-only in too many places.** `WithChannel` and
-   `ChannelRegistry.LookupByName` resolve a channel by name, so two registered
+4. **Channel identity is name-only in too many places.** Resolved; see "Channel
+   identity" under phase 5. The original note: `WithChannel` and
+   `ChannelRegistry.LookupByName` resolved a channel by name, so two registered
    channels that share a name with different PSKs (a real case for a bridge with
-   one portal per name-and-key) pick one arbitrarily. Traceroute from the bridge is
-   the visible symptom. The per-node channel tracking above is also keyed on an
-   index into a name list, and runtime `AddChannel` appends to it, so the index a
-   node is stored under depends on registration order. Both want the same fix: a
-   channel handle that carries name and key (or the hash) end to end, with the
-   per-node record storing that instead of a list index. Channel indexing was a
-   pain point in early bridge versions too, so expect this to be a redo rather than
-   a patch.
+   one portal per name-and-key) picked one arbitrarily, with traceroute from the
+   bridge as the visible symptom, and the per-node channel record was an index into
+   a name list that runtime `AddChannel` appended to.

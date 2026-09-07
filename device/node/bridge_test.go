@@ -116,8 +116,8 @@ func TestBridgeDMUsesChannelNodeInfoArrivedOn(t *testing.T) {
 		},
 	})
 
-	if info := b.db.Get(0xAA); info == nil || info.Channel != 1 {
-		t.Fatalf("nodedb channel index = %v, want 1", info)
+	if ch, ok := b.db.Channel(0xAA); !ok || ch.GetName() != "SecondCh" {
+		t.Fatalf("nodedb channel = %v, want SecondCh", ch)
 	}
 
 	if _, err := b.SendReactionAs(context.Background(), b.cfg.NodeID, 0xAA, 7, "👍"); err != nil {
@@ -139,8 +139,8 @@ func TestBridgeRuntimeChannelTrackedForUnicast(t *testing.T) {
 	if err := b.AddChannel("Later", "AQ=="); err != nil {
 		t.Fatal(err)
 	}
-	if len(b.base.channelNames) != 2 {
-		t.Fatalf("channelNames = %v, want primary plus one", b.base.channelNames)
+	if all := b.base.channels.All(); len(all) != 2 {
+		t.Fatalf("registered channels = %d, want primary plus one (a re-added channel must not duplicate)", len(all))
 	}
 
 	userBytes, _ := proto.Marshal(&pb.User{LongName: "Peer"})
@@ -168,10 +168,10 @@ func TestBridgeSetNodeChannelSeedsUnicastRouting(t *testing.T) {
 	if err := b.AddChannel("Shared", "AQ=="); err != nil {
 		t.Fatal(err)
 	}
-	if b.SetNodeChannel(0xCC, "NotRegistered") {
+	if b.SetNodeChannel(0xCC, core.NewChannelWithKey("NotRegistered", crypto.DefaultKey)) {
 		t.Error("SetNodeChannel accepted an unregistered channel")
 	}
-	if !b.SetNodeChannel(0xCC, "Shared") {
+	if !b.SetNodeChannel(0xCC, core.NewChannelWithKey("Shared", crypto.DefaultKey)) {
 		t.Fatal("SetNodeChannel rejected a registered channel")
 	}
 	if _, err := b.SendTextAs(context.Background(), b.cfg.NodeID, 0xCC, "hi"); err != nil {

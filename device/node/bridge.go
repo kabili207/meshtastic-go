@@ -175,16 +175,15 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 
 	b := &BridgeNode{
 		base: baseNode{
-			transport:      cfg.Transport,
-			channels:       channels,
-			dedup:          dedupe.NewDeduplicator(2 * time.Hour),
-			throttle:       newRequestThrottle(),
-			log:            logger,
-			nodeID:         cfg.NodeID,
-			okToMQTT:       cfg.OkToMQTT,
-			hopLimit:       cfg.DefaultHopLimit,
-			primaryChannel: cfg.Channels.Settings[0].Name,
-			channelNames:   channelNamesFrom(cfg.Channels),
+			transport: cfg.Transport,
+			channels:  channels,
+			dedup:     dedupe.NewDeduplicator(2 * time.Hour),
+			throttle:  newRequestThrottle(),
+			log:       logger,
+			nodeID:    cfg.NodeID,
+			okToMQTT:  cfg.OkToMQTT,
+			hopLimit:  cfg.DefaultHopLimit,
+			primary:   core.ChannelFromSettings(cfg.Channels.Settings[0]),
 		},
 		cfg: cfg,
 	}
@@ -266,24 +265,24 @@ func (b *BridgeNode) AddChannel(name, keyStr string) error {
 	}
 	b.base.channels.Register(ch)
 	b.base.transport.AddChannel(name)
-	// Give runtime channels an index too, so a NodeInfo heard on one is
-	// remembered for unicasts the same way as for configured channels.
-	if _, ok := b.base.channelIndex(name); !ok {
-		b.base.channelNames = append(b.base.channelNames, name)
-	}
 	return nil
 }
 
-// SetNodeChannel records that nodeID was last heard on the named channel, as
-// if its NodeInfo had arrived there, so a consumer with persistent storage can
-// restore unicast routing after a restart. The channel must already be
-// registered; reports false otherwise. Marks the node as heard now.
-func (b *BridgeNode) SetNodeChannel(nodeID core.NodeID, channelName string) bool {
-	idx, ok := b.base.channelIndex(channelName)
+// SetNodeChannel records that nodeID was last heard on this channel, as if its
+// NodeInfo had arrived there, so a consumer with persistent storage can restore
+// unicast routing after a restart. The channel is matched by name and key
+// against the registered channels and must already be registered; reports false
+// otherwise. Marks the node as heard now.
+func (b *BridgeNode) SetNodeChannel(nodeID core.NodeID, ch core.ChannelDef) bool {
+	if ch == nil {
+		return false
+	}
+	registered, ok := b.base.channels.LookupPair(ch.GetName(), ch.GetKeyBytes())
 	if !ok {
 		return false
 	}
-	b.db.Update(nodeID.Uint32(), func(info *pb.NodeInfo) { info.Channel = idx })
+	b.db.Update(nodeID.Uint32(), func(*pb.NodeInfo) {})
+	b.db.SetChannel(nodeID.Uint32(), registered)
 	return true
 }
 
@@ -320,8 +319,8 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 
 	// 3. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
-		channelName, channelKey := b.base.decodedChannel(pkt)
-		b.processDecoded(pkt, decoded, channelName, channelKey, false, 0)
+		ch, channelName := b.base.decodedChannel(pkt)
+		b.processDecoded(pkt, decoded, ch, channelName, false, 0)
 		return
 	}
 
@@ -330,29 +329,30 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 	if b.shouldTryPKI(pkt.Packet) {
 		data, err := b.tryDecryptPKI(pkt.Packet)
 		if err == nil && data != nil {
-			b.processDecoded(pkt, data, "PKI", nil, true, to)
+			b.processDecoded(pkt, data, nil, "PKI", true, to)
 			return
 		}
 		b.base.log.Debug("PKI decryption failed, falling back to PSK", "error", err)
 	}
 
-	// 5. Try PSK decryption via channel registry
-	ch, ok := b.base.channels.Lookup(pkt.Packet.Channel)
-	if !ok {
+	// 5. Try PSK decryption with every registered channel matching the hash. The
+	// one-byte hash collides, so like firmware we try each and keep the first
+	// that yields a plausible Data; a wrong key that happens to decode reports
+	// UNKNOWN_APP.
+	candidates := b.base.channels.LookupAll(pkt.Packet.Channel)
+	if len(candidates) == 0 {
 		b.base.log.Debug("unknown channel hash", "hash", pkt.Packet.Channel)
 		return
 	}
-
-	data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
-	if err != nil {
-		b.base.log.Debug("PSK decryption failed",
-			"channel", ch.GetName(),
-			"error", err)
+	for _, ch := range candidates {
+		data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
+		if err != nil || data.Portnum == pb.PortNum_UNKNOWN_APP {
+			continue
+		}
+		b.processDecoded(pkt, data, ch, ch.GetName(), false, 0)
 		return
 	}
-
-	channelKey := ch.GetKeyString()
-	b.processDecoded(pkt, data, ch.GetName(), &channelKey, false, 0)
+	b.base.log.Debug("PSK decryption failed on every matching channel", "hash", pkt.Packet.Channel)
 }
 
 // gatewayNode derives the node that delivered this packet. For MQTT it is the
@@ -413,16 +413,22 @@ func (b *BridgeNode) tryDecryptPKI(pkt *pb.MeshPacket) (*pb.Data, error) {
 // channelKey is the base64 PSK key the packet was decrypted with (nil for PKI
 // or already-decoded packets). managedTo is the managed node this packet was
 // addressed to (for PKI unicast), or 0 for PSK/broadcast packets.
-func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, channelName string, channelKey *string, isPKI bool, managedTo core.NodeID) {
+func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch core.ChannelDef, channelName string, isPKI bool, managedTo core.NodeID) {
 	signed, ok := b.base.checkSignaturePolicy(pkt.Packet, data, isPKI)
 	if !ok {
 		b.base.log.Debug("dropping packet under signature policy",
 			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
 		return
 	}
+	var channelKey *string
+	if ch != nil {
+		k := ch.GetKeyString()
+		channelKey = &k
+	}
 	via := gatewayNode(pkt)
 	evt := event.Event{
 		ChannelName:   channelName,
+		Channel:       ch,
 		ChannelKey:    channelKey,
 		From:          core.NodeID(pkt.Packet.From),
 		To:            core.NodeID(pkt.Packet.To),
@@ -450,6 +456,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		Via:         via,
 		PacketID:    evt.PacketID,
 		ChannelName: channelName,
+		Channel:     ch,
 		WantAck:     pkt.Packet.WantAck,
 		HopStart:    pkt.Packet.HopStart,
 		HopLimit:    pkt.Packet.HopLimit,
@@ -466,13 +473,11 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			return
 		}
 		if b.base.pinIdentity(from, user, evt.IsSigned) {
-			b.db.Update(from, func(info *pb.NodeInfo) {
-				info.User = user
-				// Remember which of our channels this node is reachable on.
-				if idx, ok := b.base.channelIndex(channelName); ok {
-					info.Channel = idx
-				}
-			})
+			b.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
+			// Remember which of our channels this node is reachable on.
+			if ch != nil {
+				b.db.SetChannel(from, ch)
+			}
 			b.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
 		} else {
 			b.base.log.Debug("ignoring unsigned NodeInfo from a node that previously signed", "from", evt.From)
@@ -885,7 +890,7 @@ func (b *BridgeNode) sendPKIPacketAs(ctx context.Context, from, to core.NodeID, 
 	}
 	b.base.lastSend = time.Now()
 
-	return b.base.transport.SendPacket(b.base.primaryChannel, pkt)
+	return b.base.transport.SendPacket(b.base.primary.GetName(), pkt)
 }
 
 // adjustHopForRelay adds +1 to HopStart when the sending identity differs

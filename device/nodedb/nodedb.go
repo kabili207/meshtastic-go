@@ -33,6 +33,11 @@ type NodeDB struct {
 	log   *slog.Logger
 	mu    sync.RWMutex
 	nodes map[uint32]*pb.NodeInfo
+	// channels records the channel each node was last heard on, by identity
+	// rather than by index, so it survives channels being added at runtime and
+	// distinguishes same-name channels. NodeInfo.Channel, the index a phone reads,
+	// is derived from this against whatever table the phone was sent.
+	channels map[uint32]core.ChannelDef
 }
 
 // New creates a NodeDB with the given configuration.
@@ -47,10 +52,30 @@ func New(cfg Config) *NodeDB {
 		cfg.ShortName = cfg.SelfNode.DefaultShortName()
 	}
 	return &NodeDB{
-		cfg:   cfg,
-		log:   cfg.Logger.WithGroup("nodedb"),
-		nodes: make(map[uint32]*pb.NodeInfo),
+		cfg:      cfg,
+		log:      cfg.Logger.WithGroup("nodedb"),
+		nodes:    make(map[uint32]*pb.NodeInfo),
+		channels: make(map[uint32]core.ChannelDef),
 	}
+}
+
+// SetChannel records the channel a node was last heard on. Passing nil forgets it.
+func (db *NodeDB) SetChannel(nodeID uint32, ch core.ChannelDef) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if ch == nil {
+		delete(db.channels, nodeID)
+		return
+	}
+	db.channels[nodeID] = ch
+}
+
+// Channel returns the channel a node was last heard on, if one is recorded.
+func (db *NodeDB) Channel(nodeID uint32) (core.ChannelDef, bool) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	ch, ok := db.channels[nodeID]
+	return ch, ok
 }
 
 // Update applies an update function to the node entry for the given nodeID.

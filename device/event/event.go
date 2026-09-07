@@ -19,6 +19,11 @@ type Event struct {
 	// ChannelName is the channel this packet was received on.
 	// Set to "PKI" for PKI-encrypted direct messages.
 	ChannelName string
+	// Channel is the registered channel this packet was received on, carrying
+	// both name and key. It is the value to hand back to a send when replying,
+	// since a name alone can match more than one channel. Nil for PKI packets
+	// and for a decoded packet whose channel is not registered.
+	Channel core.ChannelDef
 	// From is the sender node ID.
 	From core.NodeID
 	// To is the destination node ID (may be BroadcastNodeID).

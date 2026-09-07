@@ -18,6 +18,7 @@ type sendOptions struct {
 	wantAck      bool
 	usePKI       bool
 	channel      string
+	channelDef   core.ChannelDef
 	wantResponse bool
 	requestID    uint32
 }
@@ -43,9 +44,17 @@ func WithPKI() SendOption {
 	return func(o *sendOptions) { o.usePKI = true }
 }
 
-// WithChannel sends on a specific channel instead of the primary channel.
+// WithChannel sends on the channel with this name instead of the primary. The
+// send fails if more than one registered channel shares the name; use
+// WithChannelDef to pick one exactly.
 func WithChannel(name string) SendOption {
 	return func(o *sendOptions) { o.channel = name }
+}
+
+// WithChannelDef sends on exactly this channel, by name and key. Prefer it when
+// replying to a received packet, whose event carries the channel it arrived on.
+func WithChannelDef(ch core.ChannelDef) SendOption {
+	return func(o *sendOptions) { o.channelDef = ch }
 }
 
 // WithWantResponse requests an application-level response from the recipient.
@@ -84,7 +93,7 @@ func (n *Node) SendText(ctx context.Context, to core.NodeID, message string, opt
 		WantAck:        o.wantAck,
 		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
 	}
-	return n.base.sendPacket(ctx, pkt, o.channel)
+	return n.base.sendPacketWith(ctx, pkt, o)
 }
 
 // SendAck sends a routing ACK for the given packet ID.
@@ -144,7 +153,7 @@ func (n *Node) SendWaypoint(ctx context.Context, to core.NodeID, waypoint *pb.Wa
 			},
 		},
 	}
-	return n.base.sendPacket(ctx, pkt, o.channel)
+	return n.base.sendPacketWith(ctx, pkt, o)
 }
 
 // SendMeshBeacon broadcasts a beacon: a short advisory message and, optionally,
@@ -175,7 +184,7 @@ func (n *Node) SendMeshBeacon(ctx context.Context, beacon *pb.MeshBeacon, opts .
 			},
 		},
 	}
-	return n.base.sendPacket(ctx, pkt, o.channel)
+	return n.base.sendPacketWith(ctx, pkt, o)
 }
 
 // SendNeighborInfo broadcasts neighbor information. The neighbor list is
