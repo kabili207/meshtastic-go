@@ -138,6 +138,23 @@ func TestReceiveTriesEveryChannelWithSameHash(t *testing.T) {
 	}
 }
 
+func TestBridgeSendTextAsHonorsChannelDef(t *testing.T) {
+	mt := newMockTransport()
+	b := newTestBridge(t, mt, func(cfg *BridgeConfig) { cfg.Channels = sharedNameChannels() })
+	sharedB := core.NewChannelWithKey("Shared", otherKey())
+
+	if _, err := b.SendTextAs(context.Background(), b.cfg.NodeID, core.BroadcastNodeID, "for B", WithChannelDef(sharedB)); err != nil {
+		t.Fatal(err)
+	}
+	sent := mt.lastSent()
+	if sent.packet.Channel != sharedB.GetHash() {
+		t.Errorf("wire hash = %#x, want %#x", sent.packet.Channel, sharedB.GetHash())
+	}
+	if data, err := decryptWith(sent.packet, otherKey()); err != nil || string(data.Payload) != "for B" {
+		t.Errorf("packet did not go out on the selected channel: data=%v err=%v", data, err)
+	}
+}
+
 func TestBridgeSetNodeChannelDistinguishesSameName(t *testing.T) {
 	mt := newMockTransport()
 	b := newTestBridge(t, mt, func(cfg *BridgeConfig) { cfg.Channels = sharedNameChannels() })

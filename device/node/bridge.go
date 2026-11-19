@@ -747,7 +747,7 @@ func (b *BridgeNode) SendTextAs(ctx context.Context, from, to core.NodeID, messa
 		portnum: pb.PortNum_TEXT_MESSAGE_APP,
 		payload: []byte(message),
 		enc:     encModeFor(o.usePKI),
-		channel: o.channel,
+		channel: o.channel, channelDef: o.channelDef,
 		replyID: o.replyID,
 		emoji:   o.emoji,
 		wantAck: o.wantAck,
@@ -831,10 +831,10 @@ func (b *BridgeNode) SendNodeInfoAs(ctx context.Context, from, to core.NodeID, o
 	o := applySendOptions(opts)
 	return b.sendAs(ctx, bridgeSend{
 		from: from, to: to,
-		portnum:      pb.PortNum_NODEINFO_APP,
-		payload:      userBytes,
-		enc:          encModeFor(o.usePKI),
-		channel:      o.channel,
+		portnum: pb.PortNum_NODEINFO_APP,
+		payload: userBytes,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel, channelDef: o.channelDef,
 		wantResponse: o.wantResponse,
 	})
 }
