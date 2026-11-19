@@ -59,6 +59,9 @@ type Event struct {
 	WantAck bool
 	// WantResponse is true if the sender requested an application-level response.
 	WantResponse bool
+	// IsAutomation is true if the sender flagged the packet as sent by a bot or
+	// script (Data.bitfield bit 2). Self-reported, so treat it as advisory.
+	IsAutomation bool
 }
 
 // NodeInfoUpdated is emitted when a NODEINFO_APP packet is processed.

@@ -31,7 +31,15 @@ const (
 const (
 	bitfieldOkToMQTT     = 1
 	bitfieldWantResponse = 2
+	bitfieldIsAutomation = 4
 )
+
+func markAutomation(data *pb.Data, o sendOptions) {
+	if o.automation {
+		bf := data.GetBitfield() | bitfieldIsAutomation
+		data.Bitfield = &bf
+	}
+}
 
 // bridgeSend describes a fully-specified outbound packet from a managed node.
 type bridgeSend struct {
@@ -46,6 +54,7 @@ type bridgeSend struct {
 	emoji        uint32
 	wantResponse bool
 	wantAck      bool
+	automation   bool
 }
 
 // sendAs builds, encrypts, paces, and transmits a packet on behalf of a managed
@@ -60,6 +69,9 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 	}
 
 	bitfield := uint32(bitfieldOkToMQTT)
+	if s.automation {
+		bitfield |= bitfieldIsAutomation
+	}
 	data := &pb.Data{
 		Portnum:   s.portnum,
 		Payload:   s.payload,
@@ -223,6 +235,7 @@ func (b *BridgeNode) SendPositionAs(ctx context.Context, from, to core.NodeID, l
 		payload: payload,
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
+		automation:   o.automation,
 		wantResponse: o.wantResponse,
 	})
 }
@@ -240,7 +253,8 @@ func (b *BridgeNode) SendTelemetryAs(ctx context.Context, from, to core.NodeID, 
 		payload: payload,
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
-		requestID: o.requestID,
+		automation: o.automation,
+		requestID:  o.requestID,
 	})
 }
 
@@ -292,8 +306,9 @@ func (b *BridgeNode) SendReactionAs(ctx context.Context, from, to core.NodeID, t
 		payload: []byte(emoji),
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
-		replyID: targetPacketID,
-		emoji:   1,
+		automation: o.automation,
+		replyID:    targetPacketID,
+		emoji:      1,
 	})
 }
 
@@ -319,7 +334,8 @@ func (b *BridgeNode) SendWaypointAs(ctx context.Context, from, to core.NodeID, w
 		payload: wpBytes,
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
-		wantAck: o.wantAck,
+		automation: o.automation,
+		wantAck:    o.wantAck,
 	})
 }
 
@@ -341,7 +357,8 @@ func (b *BridgeNode) SendMeshBeaconAs(ctx context.Context, from core.NodeID, bea
 		payload: payload,
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
-		wantAck: o.wantAck,
+		automation: o.automation,
+		wantAck:    o.wantAck,
 	})
 }
 
@@ -384,6 +401,7 @@ func (b *BridgeNode) RequestTracerouteAs(ctx context.Context, from, to core.Node
 		payload: payload,
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
+		automation:   o.automation,
 		wantResponse: true,
 	})
 }
@@ -485,6 +503,7 @@ func (b *BridgeNode) SendNeighborInfoResponseAs(ctx context.Context, from, to co
 		payload: payload,
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
-		requestID: requestID,
+		automation: o.automation,
+		requestID:  requestID,
 	})
 }

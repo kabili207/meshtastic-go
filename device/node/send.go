@@ -21,6 +21,7 @@ type sendOptions struct {
 	channelDef   core.ChannelDef
 	wantResponse bool
 	requestID    uint32
+	automation   bool
 }
 
 // WithReplyID sets the reply ID, linking this message to a previous packet.
@@ -68,6 +69,13 @@ func WithRequestID(id uint32) SendOption {
 	return func(o *sendOptions) { o.requestID = id }
 }
 
+// WithAutomation marks the packet as sent by a bot or script rather than typed
+// by a person (Data.bitfield bit 2, is_automation). The sender sets it about
+// itself, so receivers treat it as advisory.
+func WithAutomation() SendOption {
+	return func(o *sendOptions) { o.automation = true }
+}
+
 // SendText sends a text message to the specified destination.
 func (n *Node) SendText(ctx context.Context, to core.NodeID, message string, opts ...SendOption) error {
 	if len(message) > core.MaxDataPayload {
@@ -84,6 +92,7 @@ func (n *Node) SendText(ctx context.Context, to core.NodeID, message string, opt
 	}
 
 	if o.usePKI {
+		markAutomation(data, o)
 		return n.SendData(ctx, to, data, true)
 	}
 

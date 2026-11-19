@@ -442,6 +442,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		ManagedNodeID: managedTo,
 		WantAck:       pkt.Packet.WantAck,
 		WantResponse:  data.WantResponse,
+		IsAutomation:  data.GetBitfield()&bitfieldIsAutomation != 0,
 		IsNeighbor: pkt.Source != transport.PacketSourceMQTT &&
 			pkt.Packet.HopStart == pkt.Packet.HopLimit && !pkt.Packet.ViaMqtt,
 	}
@@ -748,9 +749,10 @@ func (b *BridgeNode) SendTextAs(ctx context.Context, from, to core.NodeID, messa
 		payload: []byte(message),
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
-		replyID: o.replyID,
-		emoji:   o.emoji,
-		wantAck: o.wantAck,
+		replyID:    o.replyID,
+		emoji:      o.emoji,
+		wantAck:    o.wantAck,
+		automation: o.automation,
 	})
 }
 
@@ -836,6 +838,7 @@ func (b *BridgeNode) SendNodeInfoAs(ctx context.Context, from, to core.NodeID, o
 		enc:     encModeFor(o.usePKI),
 		channel: o.channel, channelDef: o.channelDef,
 		wantResponse: o.wantResponse,
+		automation:   o.automation,
 	})
 }
 

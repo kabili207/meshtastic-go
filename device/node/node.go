@@ -480,16 +480,17 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		return
 	}
 	evt := event.Event{
-		ChannelName: channelName,
-		Channel:     ch,
-		From:        core.NodeID(pkt.Packet.From),
-		To:          core.NodeID(pkt.Packet.To),
-		Timestamp:   time.Now(),
-		PacketID:    pkt.Packet.Id,
-		Portnum:     data.Portnum,
-		IsPKI:       isPKI,
-		IsSigned:    signed,
-		RawData:     data,
+		ChannelName:  channelName,
+		Channel:      ch,
+		From:         core.NodeID(pkt.Packet.From),
+		To:           core.NodeID(pkt.Packet.To),
+		Timestamp:    time.Now(),
+		PacketID:     pkt.Packet.Id,
+		Portnum:      data.Portnum,
+		IsPKI:        isPKI,
+		IsSigned:     signed,
+		RawData:      data,
+		IsAutomation: data.GetBitfield()&bitfieldIsAutomation != 0,
 	}
 	if pkt.Packet.GetRxTime() > 0 {
 		evt.Timestamp = time.Unix(int64(pkt.Packet.GetRxTime()), 0)

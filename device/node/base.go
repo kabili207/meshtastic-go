@@ -91,6 +91,9 @@ func (b *baseNode) sendPacket(ctx context.Context, packet *pb.MeshPacket, channe
 // sendPacketWith sends honoring the channel chosen by send options: an exact
 // channel first, then a name, then the destination's channel.
 func (b *baseNode) sendPacketWith(ctx context.Context, packet *pb.MeshPacket, o sendOptions) error {
+	if decoded := packet.GetDecoded(); decoded != nil {
+		markAutomation(decoded, o)
+	}
 	if o.channelDef != nil {
 		return b.sendPacketOn(ctx, packet, o.channelDef)
 	}
