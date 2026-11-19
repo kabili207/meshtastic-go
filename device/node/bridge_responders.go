@@ -217,7 +217,9 @@ func (b *BridgeNode) insertUnknownHops(evt eventContext, disco *pb.RouteDiscover
 // addGatewayToRoute adds the delivering gateway to the route if it is a distinct
 // node not already present.
 func (b *BridgeNode) addGatewayToRoute(evt eventContext, disco *pb.RouteDiscovery, forward bool) {
-	if evt.Via == 0 || evt.Via == evt.From {
+	// Over radio/UDP, Via is only the relay's low byte. That isn't a node ID,
+	// and insertUnknownHops has already accounted for the hop.
+	if evt.Via.Uint32() <= 0xFF || evt.Via == evt.From {
 		return
 	}
 	b.addNodeToRouteIfMissing(disco, evt.Via, int32(evt.RxSnr*4), forward)
