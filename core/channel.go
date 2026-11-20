@@ -33,19 +33,23 @@ type ChannelDef interface {
 	GetHash() uint32
 }
 
-// SameChannel reports whether two definitions name the same channel: equal name
-// and equal key bytes. Nil never matches.
+// SameChannel reports whether two definitions name the same channel: equal name,
+// equal key bytes, and the same cipher. Nil never matches.
 func SameChannel(a, b ChannelDef) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return a.GetName() == b.GetName() && bytes.Equal(a.GetKeyBytes(), b.GetKeyBytes())
+	return a.GetName() == b.GetName() && bytes.Equal(a.GetKeyBytes(), b.GetKeyBytes()) &&
+		ChannelIsAEAD(a) == ChannelIsAEAD(b)
 }
 
 // Channel is a simple implementation of ChannelDef.
 type Channel struct {
 	Name string
 	Key  []byte
+	// AEAD marks a channel with use_aead set, encrypted with AES-CCM instead of
+	// AES-CTR. See ChannelIsAEAD.
+	AEAD bool
 }
 
 // NewChannel creates a new Channel with the given name and key.
@@ -80,9 +84,28 @@ func (c *Channel) GetKeyBytes() []byte {
 	return c.Key
 }
 
-// GetHash returns the channel hash used for routing.
+// GetHash returns the channel hash used for routing. Firmware XORs an AEAD
+// channel's hash with 0xAE, so it never matches a CTR channel with the same name
+// and key.
 func (c *Channel) GetHash() uint32 {
-	return crypto.ChannelHash(c.Name, c.Key)
+	h := crypto.ChannelHash(c.Name, c.Key)
+	if c.AEAD {
+		h ^= 0xAE
+	}
+	return h
+}
+
+// IsAEAD reports whether the channel uses AES-CCM.
+func (c *Channel) IsAEAD() bool {
+	return c != nil && c.AEAD
+}
+
+// ChannelIsAEAD reports whether a channel encrypts with AES-CCM, which a
+// ChannelDef shows by implementing IsAEAD. Such a channel's tag authenticates
+// every packet, so firmware neither signs on it nor requires signatures.
+func ChannelIsAEAD(ch ChannelDef) bool {
+	a, ok := ch.(interface{ IsAEAD() bool })
+	return ok && a.IsAEAD()
 }
 
 // ChannelFromSettings creates a Channel from the settings of a primary channel,
@@ -93,7 +116,9 @@ func ChannelFromSettings(settings *pb.ChannelSettings) *Channel {
 	if settings == nil {
 		return nil
 	}
-	return &Channel{Name: settings.Name, Key: settingsKey(settings.Psk)}
+	key := settingsKey(settings.Psk)
+	// Firmware's fixupChannel clears use_aead on a channel with no key.
+	return &Channel{Name: settings.Name, Key: key, AEAD: settings.UseAead && len(key) > 0}
 }
 
 func settingsKey(psk []byte) []byte {
@@ -122,6 +147,7 @@ func ChannelsFromSet(set *pb.ChannelSet) []*Channel {
 		}
 		if len(s.Psk) == 0 && i > 0 && out[0] != nil {
 			ch.Key = out[0].Key
+			ch.AEAD = s.UseAead && len(ch.Key) > 0
 		}
 		out[i] = ch
 	}

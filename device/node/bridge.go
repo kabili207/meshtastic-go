@@ -356,7 +356,7 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 		return
 	}
 	for _, ch := range candidates {
-		data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
+		data, err := decodeOn(pkt.Packet, ch)
 		if err != nil || data.Portnum == pb.PortNum_UNKNOWN_APP {
 			continue
 		}
@@ -431,7 +431,7 @@ func (b *BridgeNode) tryDecryptPKI(pkt *pb.MeshPacket) (*pb.Data, error) {
 // or already-decoded packets). managedTo is the managed node this packet was
 // addressed to (for PKI unicast), or 0 for PSK/broadcast packets.
 func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch core.ChannelDef, channelName string, isPKI bool, managedTo core.NodeID) {
-	signed, ok := b.base.checkSignaturePolicy(pkt.Packet, data, isPKI)
+	signed, ok := b.base.checkSignaturePolicy(pkt.Packet, data, isPKI, core.ChannelIsAEAD(ch))
 	if !ok {
 		b.base.log.Debug("dropping packet under signature policy",
 			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
@@ -501,7 +501,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			b.base.log.Debug("failed to unmarshal NodeInfo", "error", err)
 			return
 		}
-		if b.base.pinIdentity(from, user, evt.IsSigned) {
+		if b.base.pinIdentity(from, user, evt.IsSigned, core.ChannelIsAEAD(ch)) {
 			b.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
 			// Remember which of our channels this node is reachable on.
 			if ch != nil {

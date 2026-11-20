@@ -393,7 +393,7 @@ func TestReceiveStrictExemptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		pkt := &pb.MeshPacket{Id: 1, From: 0xAA, To: n.cfg.NodeID.Uint32()}
-		if _, ok := n.base.checkSignaturePolicy(pkt, &pb.Data{Portnum: tt.portnum}, tt.pki); !ok {
+		if _, ok := n.base.checkSignaturePolicy(pkt, &pb.Data{Portnum: tt.portnum}, tt.pki, false); !ok {
 			t.Errorf("%v (pki=%v): STRICT dropped an exempt unsigned packet", tt.portnum, tt.pki)
 		}
 	}
@@ -411,7 +411,7 @@ func TestReceiveTracerouteSignatureIgnored(t *testing.T) {
 	data := signedData(t, peer, 55, n.cfg.NodeID, pb.PortNum_TRACEROUTE_APP, []byte{0x0a, 0x04, 1, 2, 3, 4})
 	data.Payload = []byte{0x0a, 0x04, 9, 9, 9, 9} // rewritten by a relay
 	pkt := &pb.MeshPacket{Id: 55, From: peer.id.Uint32(), To: n.cfg.NodeID.Uint32()}
-	signed, ok := n.base.checkSignaturePolicy(pkt, data, false)
+	signed, ok := n.base.checkSignaturePolicy(pkt, data, false, false)
 	if !ok || signed {
 		t.Errorf("checkSignaturePolicy = signed %v, accept %v; want unsigned and accepted", signed, ok)
 	}
@@ -433,7 +433,7 @@ func TestReceiveSignedNodeInfoMustCarrySignerKey(t *testing.T) {
 	// Checked directly too: on a bridge the verifying key can come from
 	// PublicKeyForNode with nothing in the NodeDB for pinIdentity to compare.
 	pkt := &pb.MeshPacket{Id: 56, From: peer.id.Uint32(), To: core.BroadcastNodeID.Uint32()}
-	if _, ok := n.base.checkSignaturePolicy(pkt, signedData(t, peer, 56, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, swapped), false); ok {
+	if _, ok := n.base.checkSignaturePolicy(pkt, signedData(t, peer, 56, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, swapped), false, false); ok {
 		t.Error("checkSignaturePolicy accepted a signed NodeInfo advertising another key")
 	}
 	inject(n, mt, decodedPacket(peer.id, core.BroadcastNodeID, 56, signedData(t, peer, 56, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, swapped)))

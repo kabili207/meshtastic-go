@@ -209,12 +209,25 @@ func (b *baseNode) encryptOutbound(pkt *pb.MeshPacket, ch core.ChannelDef, requi
 		return fmt.Errorf("%w: %v to %s", ErrPKIUnavailable, data.Portnum, to)
 	}
 
-	b.signOutbound(data, pkt.From, pkt.Id, to, pki)
+	aead := !pki && core.ChannelIsAEAD(ch)
+	b.signOutbound(data, pkt.From, pkt.Id, to, pki || aead)
 	plaintext, err := proto.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("marshalling data: %w", err)
 	}
 
+	if aead {
+		if len(plaintext)+crypto.AEADOverhead+core.LoraHeaderLength > core.MaxLoraPayload {
+			return fmt.Errorf("%w: %d bytes with AEAD overhead", ErrPacketTooLarge, len(plaintext)+crypto.AEADOverhead)
+		}
+		encrypted, err := crypto.EncryptAEAD(plaintext, ch.GetKeyBytes(), pkt.Id, pkt.From, pkt.To)
+		if err != nil {
+			return fmt.Errorf("AEAD encrypt: %w", err)
+		}
+		pkt.Channel = ch.GetHash()
+		pkt.PayloadVariant = &pb.MeshPacket_Encrypted{Encrypted: encrypted}
+		return nil
+	}
 	if !pki {
 		if pkt.Channel == 0 {
 			pkt.Channel = ch.GetHash()
@@ -255,6 +268,24 @@ func (b *baseNode) outboundBitfield(bits uint32, wantResponse bool) uint32 {
 		bits |= bitfieldWantResponse
 	}
 	return bits
+}
+
+// decodeOn decrypts a packet with a channel's key, using AES-CCM on an AEAD
+// channel. Firmware never falls back to AES-CTR there: a tag that does not
+// verify means the packet is not for that channel.
+func decodeOn(pkt *pb.MeshPacket, ch core.ChannelDef) (*pb.Data, error) {
+	if !core.ChannelIsAEAD(ch) {
+		return crypto.TryDecode(pkt, ch.GetKeyBytes())
+	}
+	plain, err := crypto.DecryptAEAD(pkt.GetEncrypted(), ch.GetKeyBytes(), pkt.Id, pkt.From, pkt.To)
+	if err != nil {
+		return nil, err
+	}
+	data := &pb.Data{}
+	if err := proto.Unmarshal(plain, data); err != nil {
+		return nil, crypto.ErrDecrypt
+	}
+	return data, nil
 }
 
 // isLegacyDM reports whether a channel-decrypted packet is a text DM to one of

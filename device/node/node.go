@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
-	"github.com/kabili207/meshtastic-go/core/crypto"
 	"github.com/kabili207/meshtastic-go/core/dedupe"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/broadcast"
@@ -529,7 +528,7 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		return
 	}
 	for _, ch := range candidates {
-		data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
+		data, err := decodeOn(pkt.Packet, ch)
 		if err != nil || data.Portnum == pb.PortNum_UNKNOWN_APP {
 			continue
 		}
@@ -548,7 +547,7 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 // processDecoded handles a successfully decoded packet: updates the nodedb
 // and emits typed events.
 func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch core.ChannelDef, channelName string, isPKI bool) {
-	signed, ok := n.base.checkSignaturePolicy(pkt.Packet, data, isPKI)
+	signed, ok := n.base.checkSignaturePolicy(pkt.Packet, data, isPKI, core.ChannelIsAEAD(ch))
 	if !ok {
 		n.base.log.Debug("dropping packet under signature policy",
 			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
@@ -593,7 +592,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 			n.base.log.Debug("failed to unmarshal NodeInfo", "error", err)
 			return
 		}
-		if n.base.pinIdentity(from, user, evt.IsSigned) {
+		if n.base.pinIdentity(from, user, evt.IsSigned, core.ChannelIsAEAD(ch)) {
 			n.db.Update(from, func(info *pb.NodeInfo) { info.User = user })
 			// Remember which of our channels this node is reachable on.
 			if ch != nil {

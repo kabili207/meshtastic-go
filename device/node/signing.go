@@ -18,10 +18,11 @@ import (
 // verification at every receiver that knows our key.
 //
 // Unlike firmware, COMPATIBLE signs too. Every policy accepts a valid signature, and
-// signing is what lets peers bind our identities to their keys.
-func (b *baseNode) signOutbound(data *pb.Data, from, packetID uint32, to core.NodeID, pki bool) {
+// signing is what lets peers bind our identities to their keys. A PKI or AEAD
+// packet is authenticated by its encryption and never signed.
+func (b *baseNode) signOutbound(data *pb.Data, from, packetID uint32, to core.NodeID, encAuthenticated bool) {
 	data.XeddsaSignature = nil
-	if pki || b.privateKeyFor == nil || !signableOutbound(data.Portnum, to, b.licensed) {
+	if encAuthenticated || b.privateKeyFor == nil || !signableOutbound(data.Portnum, to, b.licensed) {
 		return
 	}
 	key := b.privateKeyFor(core.NodeID(from))
@@ -69,8 +70,9 @@ func signedDataFits(data *pb.Data) bool {
 // checkSignaturePolicy decides whether a decoded packet is accepted under the
 // configured policy, and whether it carried a signature we verified. It never
 // trusts an inbound xeddsa_signed flag: the packet's flag is cleared and set only
-// from our own verification.
-func (b *baseNode) checkSignaturePolicy(pkt *pb.MeshPacket, data *pb.Data, isPKI bool) (signed, accept bool) {
+// from our own verification. An AEAD channel's tag authenticates every packet, so
+// STRICT does not apply there, though a bad signature still drops the packet.
+func (b *baseNode) checkSignaturePolicy(pkt *pb.MeshPacket, data *pb.Data, isPKI, aead bool) (signed, accept bool) {
 	pkt.XeddsaSigned = false
 	// Every hop rewrites a traceroute, so a signature on one cannot verify past the
 	// first hop. Ignore it, and never require one.
@@ -78,7 +80,7 @@ func (b *baseNode) checkSignaturePolicy(pkt *pb.MeshPacket, data *pb.Data, isPKI
 		return false, true
 	}
 	sig := data.XeddsaSignature
-	strict := b.signaturePolicy == pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT
+	strict := b.signaturePolicy == pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT && !aead
 	from := core.NodeID(pkt.From)
 
 	switch {
@@ -183,16 +185,16 @@ func (b *baseNode) verifyFirstContactNodeInfo(pkt *pb.MeshPacket, data *pb.Data)
 // pinIdentity applies firmware's identity-write rules (NodeDB::updateUser) before a
 // NodeInfo is stored, reporting whether the update should go ahead:
 //   - under BALANCED and STRICT, a node known to sign may only change its identity
-//     through a signed NodeInfo
+//     through a signed NodeInfo, except on an AEAD channel
 //   - a NodeInfo advertising one of our own keys is refused
 //   - once we hold a key for a node, a NodeInfo carrying a different key, or none,
 //     is refused outright, names included
-func (b *baseNode) pinIdentity(from uint32, user *pb.User, signed bool) bool {
+func (b *baseNode) pinIdentity(from uint32, user *pb.User, signed, aead bool) bool {
 	if b.db == nil {
 		return true
 	}
 	existing := b.db.Get(from)
-	if !signed && existing != nil && existing.HasXeddsaSigned &&
+	if !signed && !aead && existing != nil && existing.HasXeddsaSigned &&
 		b.signaturePolicy != pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_COMPATIBLE {
 		b.log.Debug("refusing unsigned NodeInfo from a node that signs", "from", core.NodeID(from))
 		return false
