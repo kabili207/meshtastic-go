@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
@@ -51,7 +52,10 @@ type Config struct {
 	// Zero disables.
 	BroadcastPositionInterval time.Duration
 
-	// Position coordinates.
+	// Position coordinates. Like firmware, positions are only sent (broadcast or
+	// in reply) on the lowest-indexed channel whose module_settings set a non-zero
+	// position_precision, coarsened to it, and to 15 bits on a channel with a
+	// public key.
 	PositionLatitudeI  int32
 	PositionLongitudeI int32
 	PositionAltitude   int32
@@ -148,6 +152,8 @@ type Node struct {
 	db        *nodedb.NodeDB
 	scheduler *broadcast.Scheduler
 	api       *clientapi.Server
+
+	positionOffWarning sync.Once
 }
 
 // New creates a Node with the given configuration. It validates the config,
@@ -335,18 +341,12 @@ func (n *Node) broadcastNodeInfo(ctx context.Context) error {
 
 // broadcastPosition sends a Position broadcast to all nodes.
 func (n *Node) broadcastPosition(ctx context.Context) error {
-	n.base.log.Debug("broadcasting Position")
-	pos := &pb.Position{
-		LatitudeI:  &n.cfg.PositionLatitudeI,
-		LongitudeI: &n.cfg.PositionLongitudeI,
-		Altitude:   &n.cfg.PositionAltitude,
-		Time:       uint32(time.Now().Unix()),
+	posBytes, ch, ok := n.ourPosition()
+	if !ok {
+		return nil
 	}
-	posBytes, err := proto.Marshal(pos)
-	if err != nil {
-		return fmt.Errorf("marshalling position: %w", err)
-	}
-	return n.base.sendPacket(ctx, &pb.MeshPacket{
+	n.base.log.Debug("broadcasting Position", "channel", ch.GetName())
+	return n.base.sendPacketOn(ctx, &pb.MeshPacket{
 		From:     n.cfg.NodeID.Uint32(),
 		To:       core.BroadcastNodeID.Uint32(),
 		Priority: pb.MeshPacket_BACKGROUND,
@@ -356,7 +356,43 @@ func (n *Node) broadcastPosition(ctx context.Context) error {
 				Payload: posBytes,
 			},
 		},
-	}, "")
+	}, ch, false)
+}
+
+// ourPosition encodes our position for the mesh the way firmware's PositionModule
+// does, for broadcasts and replies alike: on the lowest-indexed channel that
+// allows any precision, coarsened to that channel's precision. Reports false when
+// sharing is off on every channel or there are no coordinates to send.
+func (n *Node) ourPosition() ([]byte, core.ChannelDef, bool) {
+	if n.cfg.PositionLatitudeI == 0 && n.cfg.PositionLongitudeI == 0 {
+		return nil, nil, false
+	}
+	table := make([]*pb.Channel, len(n.cfg.Channels.Settings))
+	for i, settings := range n.cfg.Channels.Settings {
+		table[i] = &pb.Channel{Index: int32(i), Role: pb.Channel_SECONDARY, Settings: settings}
+	}
+	table[0].Role = pb.Channel_PRIMARY
+
+	idx, ok := core.FindPositionChannel(table)
+	if !ok {
+		n.positionOffWarning.Do(func() {
+			n.base.log.Warn("position sharing is off on every channel; set module_settings.position_precision on one to send positions")
+		})
+		return nil, nil, false
+	}
+	pos := &pb.Position{
+		LatitudeI:  proto.Int32(n.cfg.PositionLatitudeI),
+		LongitudeI: proto.Int32(n.cfg.PositionLongitudeI),
+		Altitude:   proto.Int32(n.cfg.PositionAltitude),
+		Time:       uint32(time.Now().Unix()),
+	}
+	core.ApplyPositionPrecision(pos, core.PositionPrecisionForChannel(table, idx))
+	posBytes, err := proto.Marshal(pos)
+	if err != nil {
+		n.base.log.Error("failed to marshal Position", "error", err)
+		return nil, nil, false
+	}
+	return posBytes, core.ChannelFromSettings(table[idx].Settings), true
 }
 
 // requestIsForUs reports whether a want_response request is ours to answer.
@@ -387,15 +423,11 @@ func (n *Node) respondNodeInfo(to uint32, requestID uint32) {
 
 // respondPosition sends our Position as a unicast response to a WantResponse request.
 func (n *Node) respondPosition(to uint32, requestID uint32) {
-	pos := &pb.Position{
-		LatitudeI:  &n.cfg.PositionLatitudeI,
-		LongitudeI: &n.cfg.PositionLongitudeI,
-		Altitude:   &n.cfg.PositionAltitude,
-		Time:       uint32(time.Now().Unix()),
-	}
-	posBytes, err := proto.Marshal(pos)
-	if err != nil {
-		n.base.log.Error("failed to marshal Position response", "error", err)
+	// Firmware replies on the position channel, not the one the request came in on,
+	// and sends one reply per window across all requesters. Only a reply that can
+	// actually go out uses up the window.
+	posBytes, ch, ok := n.ourPosition()
+	if !ok || !n.base.throttle.canRespond(n.cfg.NodeID, pb.PortNum_POSITION_APP) {
 		return
 	}
 	pkt := &pb.MeshPacket{
@@ -409,7 +441,7 @@ func (n *Node) respondPosition(to uint32, requestID uint32) {
 			},
 		},
 	}
-	if err := n.base.sendPacket(context.Background(), pkt, ""); err != nil {
+	if err := n.base.sendPacketOn(context.Background(), pkt, ch, false); err != nil {
 		n.base.log.Error("failed to send Position response", "to", core.NodeID(to), "error", err)
 	} else {
 		n.base.log.Debug("sent Position response", "to", core.NodeID(to))
@@ -542,9 +574,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		n.db.Update(from, func(info *pb.NodeInfo) { info.Position = pos })
 		n.base.emitEvent(&event.PositionUpdated{Event: evt, Position: pos})
 
-		// Respond to Position requests with our position. Firmware sends one reply
-		// per window across all requesters, so the throttle is keyed on us.
-		if data.WantResponse && n.requestIsForUs(pkt.Packet) && n.base.throttle.canRespond(n.cfg.NodeID, pb.PortNum_POSITION_APP) {
+		if data.WantResponse && n.requestIsForUs(pkt.Packet) {
 			n.respondPosition(from, pkt.Packet.Id)
 		}
 

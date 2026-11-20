@@ -4,9 +4,24 @@ import (
 	"testing"
 
 	"github.com/kabili207/meshtastic-go/core"
+	"github.com/kabili207/meshtastic-go/core/crypto"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"google.golang.org/protobuf/proto"
 )
+
+// positionNode is a node with coordinates and a channel that shares position.
+func positionNode(t *testing.T, mt *mockTransport, precision uint32) *Node {
+	t.Helper()
+	return newTestNode(t, mt, func(c *Config) {
+		c.PositionLatitudeI = 400_000_000
+		c.PositionLongitudeI = -800_000_000
+		c.Channels = &pb.ChannelSet{Settings: []*pb.ChannelSettings{{
+			Name:           "LongFast",
+			Psk:            crypto.DefaultKey,
+			ModuleSettings: &pb.ModuleSettings{PositionPrecision: precision},
+		}}}
+	})
+}
 
 func positionRequest() *pb.Data {
 	return &pb.Data{Portnum: pb.PortNum_POSITION_APP, WantResponse: true}
@@ -22,7 +37,7 @@ func nodeInfoRequest() *pb.Data {
 func TestNoReplyToOverheardRequests(t *testing.T) {
 	for _, req := range []*pb.Data{positionRequest(), nodeInfoRequest()} {
 		mt := newMockTransport()
-		n := newTestNode(t, mt)
+		n := positionNode(t, mt, 32)
 		inject(n, mt, decodedPacket(0xAA, 0xBB, 1, req))
 		if mt.sentCount() != 0 {
 			t.Errorf("%v: replied to a request addressed to another node", req.Portnum)
@@ -37,7 +52,7 @@ func TestNoReplyToOverheardRequests(t *testing.T) {
 // Firmware sends at most one position reply per 3 minutes, whoever asks.
 func TestPositionRepliesThrottledAcrossRequesters(t *testing.T) {
 	mt := newMockTransport()
-	n := newTestNode(t, mt)
+	n := positionNode(t, mt, 32)
 	for i, from := range []core.NodeID{0xAA, 0xBB, 0xCC} {
 		inject(n, mt, decodedPacket(from, n.cfg.NodeID, uint32(10+i), positionRequest()))
 	}
