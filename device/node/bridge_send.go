@@ -321,6 +321,24 @@ func (b *BridgeNode) SendMeshBeaconAs(ctx context.Context, from core.NodeID, bea
 	})
 }
 
+// SendStatusAs broadcasts a status message from a managed node and returns the
+// packet ID.
+func (b *BridgeNode) SendStatusAs(ctx context.Context, from core.NodeID, status string, opts ...SendOption) (uint32, error) {
+	payload, err := statusPayload(status)
+	if err != nil {
+		return 0, err
+	}
+	o := applySendOptions(opts)
+	return b.sendAs(ctx, bridgeSend{
+		from: from, to: core.BroadcastNodeID,
+		portnum: pb.PortNum_NODE_STATUS_APP,
+		payload: payload,
+		enc:     encModeFor(o.usePKI),
+		channel: o.channel, channelDef: o.channelDef,
+		automation: o.automation,
+	})
+}
+
 // SendNackAs sends a routing negative-acknowledgement from a managed node.
 func (b *BridgeNode) SendNackAs(ctx context.Context, from, to core.NodeID, packetID uint32) error {
 	routing := &pb.Routing{

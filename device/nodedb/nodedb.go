@@ -38,6 +38,9 @@ type NodeDB struct {
 	// distinguishes same-name channels. NodeInfo.Channel, the index a phone reads,
 	// is derived from this against whatever table the phone was sent.
 	channels map[uint32]core.ChannelDef
+	// statuses holds each node's latest status message. NodeInfo has no field
+	// for it; firmware keeps it alongside the node record too.
+	statuses map[uint32]string
 }
 
 // New creates a NodeDB with the given configuration.
@@ -56,7 +59,23 @@ func New(cfg Config) *NodeDB {
 		log:      cfg.Logger.WithGroup("nodedb"),
 		nodes:    make(map[uint32]*pb.NodeInfo),
 		channels: make(map[uint32]core.ChannelDef),
+		statuses: make(map[uint32]string),
 	}
+}
+
+// SetStatus records a node's latest status message.
+func (db *NodeDB) SetStatus(nodeID uint32, status string) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.statuses[nodeID] = status
+}
+
+// Status returns a node's latest status message, if it has sent one.
+func (db *NodeDB) Status(nodeID uint32) (string, bool) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	status, ok := db.statuses[nodeID]
+	return status, ok
 }
 
 // SetChannel records the channel a node was last heard on. Passing nil forgets it.

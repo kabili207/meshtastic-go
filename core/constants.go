@@ -53,4 +53,8 @@ const (
 	// proto comment says 100, but firmware decodes into a 61-byte nanopb buffer
 	// that includes the terminator.
 	MaxMeshBeaconMessage = 60
+
+	// MaxStatusMessage is the maximum byte length of a node status. Firmware
+	// decodes it into an 80-byte nanopb buffer that includes the terminator.
+	MaxStatusMessage = 79
 )

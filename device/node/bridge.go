@@ -559,6 +559,15 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		isDelete := wp.Expire > 0 && time.Unix(int64(wp.Expire), 0).Before(time.Now())
 		b.base.emitEvent(&event.WaypointReceived{Event: evt, Waypoint: wp, IsDelete: isDelete})
 
+	case pb.PortNum_NODE_STATUS_APP:
+		status := &pb.StatusMessage{}
+		if err := proto.Unmarshal(data.Payload, status); err != nil {
+			b.base.log.Debug("failed to unmarshal StatusMessage", "error", err)
+			return
+		}
+		b.db.SetStatus(from, status.Status)
+		b.base.emitEvent(&event.StatusMessageReceived{Event: evt, Status: status.Status})
+
 	case pb.PortNum_MESH_BEACON_APP:
 		beacon := &pb.MeshBeacon{}
 		if err := proto.Unmarshal(data.Payload, beacon); err != nil {

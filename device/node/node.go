@@ -63,6 +63,10 @@ type Config struct {
 	// TCPListenAddr for the client API TCP listener. Empty disables.
 	TCPListenAddr string
 
+	// StatusMessage is broadcast every 12 hours, as firmware's StatusMessage
+	// module does. At most MaxStatusMessage bytes; empty sends nothing.
+	StatusMessage string
+
 	// OnConfigChange decides on settings changes a connected app sends. Accepted
 	// changes are shown to apps from then on, but applying them to the running
 	// node, or persisting them, is the handler's job. Nil refuses every change.
@@ -229,6 +233,8 @@ func New(cfg Config) (*Node, error) {
 		NodeInfoFunc:     n.broadcastNodeInfo,
 		PositionInterval: cfg.BroadcastPositionInterval,
 		PositionFunc:     n.broadcastPosition,
+		StatusInterval:   statusInterval(cfg.StatusMessage),
+		StatusFunc:       func(ctx context.Context) error { return n.SendStatus(ctx, cfg.StatusMessage) },
 		Logger:           cfg.Logger,
 	})
 
@@ -717,6 +723,15 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		}
 		isDelete := wp.Expire > 0 && time.Unix(int64(wp.Expire), 0).Before(time.Now())
 		n.base.emitEvent(&event.WaypointReceived{Event: evt, Waypoint: wp, IsDelete: isDelete})
+
+	case pb.PortNum_NODE_STATUS_APP:
+		status := &pb.StatusMessage{}
+		if err := proto.Unmarshal(data.Payload, status); err != nil {
+			n.base.log.Debug("failed to unmarshal StatusMessage", "error", err)
+			return
+		}
+		n.db.SetStatus(from, status.Status)
+		n.base.emitEvent(&event.StatusMessageReceived{Event: evt, Status: status.Status})
 
 	case pb.PortNum_MESH_BEACON_APP:
 		beacon := &pb.MeshBeacon{}

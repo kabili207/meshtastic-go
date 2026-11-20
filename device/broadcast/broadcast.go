@@ -26,6 +26,12 @@ type Config struct {
 	// PositionFunc is called to broadcast Position. Required if PositionInterval > 0.
 	PositionFunc BroadcastFunc
 
+	// StatusInterval is the interval between status message broadcasts.
+	// Zero disables them.
+	StatusInterval time.Duration
+	// StatusFunc is called to broadcast the status. Required if StatusInterval > 0.
+	StatusFunc BroadcastFunc
+
 	// Logger for broadcast events. Falls back to slog.Default() if nil.
 	Logger *slog.Logger
 }
@@ -73,6 +79,13 @@ func (s *Scheduler) Start(ctx context.Context) {
 		})
 	}
 
+	if s.cfg.StatusInterval > 0 && s.cfg.StatusFunc != nil {
+		jobs = append(jobs, broadcastJob{
+			name:     "Status",
+			interval: s.cfg.StatusInterval,
+			fn:       s.cfg.StatusFunc,
+		})
+	}
 	if len(jobs) == 0 {
 		<-ctx.Done()
 		return

@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
@@ -190,6 +191,41 @@ func (n *Node) SendMeshBeacon(ctx context.Context, beacon *pb.MeshBeacon, opts .
 		},
 	}
 	return n.base.sendPacketWith(ctx, pkt, o)
+}
+
+// statusInterval is how often firmware's StatusMessage module rebroadcasts a
+// configured status, or zero when there is none to send.
+func statusInterval(status string) time.Duration {
+	if status == "" {
+		return 0
+	}
+	return 12 * time.Hour
+}
+
+// statusPayload encodes a status message, refusing one firmware could not decode.
+func statusPayload(status string) ([]byte, error) {
+	if len(status) > core.MaxStatusMessage {
+		return nil, fmt.Errorf("status is %d bytes, max %d", len(status), core.MaxStatusMessage)
+	}
+	return proto.Marshal(&pb.StatusMessage{Status: status})
+}
+
+// SendStatus broadcasts our status message, as firmware's StatusMessage module
+// does: at background priority, on the primary channel unless an option picks
+// another.
+func (n *Node) SendStatus(ctx context.Context, status string, opts ...SendOption) error {
+	payload, err := statusPayload(status)
+	if err != nil {
+		return err
+	}
+	return n.base.sendPacketWith(ctx, &pb.MeshPacket{
+		From:     n.cfg.NodeID.Uint32(),
+		To:       core.BroadcastNodeID.Uint32(),
+		Priority: pb.MeshPacket_BACKGROUND,
+		PayloadVariant: &pb.MeshPacket_Decoded{
+			Decoded: &pb.Data{Portnum: pb.PortNum_NODE_STATUS_APP, Payload: payload},
+		},
+	}, applySendOptions(opts))
 }
 
 // SendNeighborInfo broadcasts neighbor information. The neighbor list is

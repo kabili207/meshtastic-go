@@ -118,6 +118,15 @@ type MeshBeaconReceived struct {
 	HasOffer bool
 }
 
+// StatusMessageReceived is emitted when a NODE_STATUS_APP packet is processed:
+// a short status a node broadcasts about itself. The latest one per node is also
+// kept in the NodeDB.
+type StatusMessageReceived struct {
+	Event
+	// Status is the node's status text.
+	Status string
+}
+
 // NeighborInfoReceived is emitted when a NEIGHBORINFO_APP packet is processed.
 type NeighborInfoReceived struct {
 	Event
