@@ -40,6 +40,12 @@ type BridgeConfig struct {
 	// The maximum usable value is 7.
 	DefaultHopLimit uint32
 
+	// ManualAcks stops the bridge acking want_ack packets addressed to its
+	// identities, for consumers that ack with SendAckAs themselves. Naks for
+	// packets the bridge could not decode are still sent, since only the bridge
+	// sees those.
+	ManualAcks bool
+
 	// OkToMQTT sets the "OK to MQTT" bitfield flag on all outbound Data
 	// packets. When true, MQTT gateways on the mesh are permitted to
 	// upload these packets.
@@ -345,6 +351,7 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 	candidates := b.base.channels.LookupAll(pkt.Packet.Channel)
 	if len(candidates) == 0 {
 		b.base.log.Debug("unknown channel hash", "hash", pkt.Packet.Channel)
+		b.nakUndecodable(pkt.Packet)
 		return
 	}
 	for _, ch := range candidates {
@@ -354,12 +361,14 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 		}
 		if b.base.isLegacyDM(pkt.Packet, data) {
 			b.base.log.Warn("rejecting channel-encrypted DM", "from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
+			b.nakUndecodable(pkt.Packet)
 			return
 		}
 		b.processDecoded(pkt, data, ch, ch.GetName(), false, 0)
 		return
 	}
 	b.base.log.Debug("PSK decryption failed on every matching channel", "hash", pkt.Packet.Channel)
+	b.nakUndecodable(pkt.Packet)
 }
 
 // gatewayNode derives the node that delivered this packet. For MQTT it is the
@@ -473,6 +482,17 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 
 	from := pkt.Packet.From
 
+	// Firmware acks after the modules have run, and not at all when one of them
+	// already replied.
+	replied := false
+	if b.isOurs(evt.To) && !b.cfg.ManualAcks {
+		defer func() {
+			if !replied {
+				b.sendRouting(b.base.ackFor(pkt.Packet, data), ch)
+			}
+		}()
+	}
+
 	switch data.Portnum {
 	case pb.PortNum_NODEINFO_APP:
 		user := &pb.User{}
@@ -491,7 +511,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 
 		// Auto-respond to NodeInfo WantResponse on behalf of managed nodes
 		if data.WantResponse {
-			b.respondNodeInfoForManaged(evt)
+			replied = b.respondNodeInfoForManaged(evt)
 		}
 
 	case pb.PortNum_POSITION_APP:
@@ -516,7 +536,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 
 		// Auto-respond to telemetry requests addressed to a managed node.
 		if data.WantResponse && !evt.To.IsBroadcast() {
-			b.respondTelemetry(reqCtx, tel)
+			replied = b.respondTelemetry(reqCtx, tel)
 		}
 
 	case pb.PortNum_TEXT_MESSAGE_APP:
@@ -559,7 +579,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 
 		// Auto-respond to neighbor info requests addressed to a managed node.
 		if data.WantResponse && !evt.To.IsBroadcast() {
-			b.respondNeighborInfo(reqCtx, ni)
+			replied = b.respondNeighborInfo(reqCtx, ni)
 		}
 
 	case pb.PortNum_MAP_REPORT_APP:
@@ -610,7 +630,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		} else {
 			// This is an incoming traceroute request. The bridge answers on
 			// behalf of the managed destination; it is not surfaced as an event.
-			b.handleTracerouteRequest(reqCtx, rd)
+			replied = b.handleTracerouteRequest(reqCtx, rd)
 		}
 
 	case pb.PortNum_ROUTING_APP:
@@ -624,6 +644,12 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			ErrorReason:      routing.GetErrorReason(),
 			OriginalPacketID: data.RequestId,
 		})
+		// The peer could not decrypt a PKI packet from this identity for lack of
+		// its key, so send it the identity's NodeInfo, which carries it.
+		if routing.GetErrorReason() == pb.Routing_PKI_UNKNOWN_PUBKEY && b.isOurs(evt.To) &&
+			b.base.throttle.canRespond(evt.To, pb.PortNum_NODEINFO_APP) {
+			b.sendNodeInfoResponse(evt.To, from, 0)
+		}
 
 	default:
 		b.base.emitEvent(&event.PacketReceived{Event: evt})
@@ -633,34 +659,64 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 // respondNodeInfoForManaged answers a NodeInfo WantResponse request the way
 // firmware's MeshModule would if each identity were its own node: only the
 // addressed identity replies, and only the bridge itself answers a broadcast.
-// Requests we overhear between other nodes get no reply.
-func (b *BridgeNode) respondNodeInfoForManaged(evt event.Event) {
+// Requests we overhear between other nodes get no reply. It reports whether a
+// reply went out.
+func (b *BridgeNode) respondNodeInfoForManaged(evt event.Event) bool {
 	responder := evt.To
 	if responder.IsBroadcast() {
 		responder = b.cfg.NodeID
-	} else if responder != b.cfg.NodeID && !b.cfg.IsManagedNode(responder) {
+	} else if !b.isOurs(responder) {
+		return false
+	}
+	return b.base.throttle.canRespond(responder, pb.PortNum_NODEINFO_APP) &&
+		b.sendNodeInfoResponse(responder, evt.From.Uint32(), evt.PacketID)
+}
+
+// isOurs reports whether id is the bridge itself or one of its managed nodes.
+func (b *BridgeNode) isOurs(id core.NodeID) bool {
+	return id == b.cfg.NodeID || b.cfg.IsManagedNode(id)
+}
+
+// sendRouting sends an ack or nak built by ackFor or nakFor from the identity
+// the answered packet was addressed to, on its channel, or the primary for PKI
+// and undecodable packets.
+func (b *BridgeNode) sendRouting(pkt *pb.MeshPacket, ch core.ChannelDef) {
+	if pkt == nil {
 		return
 	}
-	if b.base.throttle.canRespond(responder, pb.PortNum_NODEINFO_APP) {
-		b.sendNodeInfoResponse(responder, evt.From.Uint32(), evt.PacketID)
+	if ch == nil {
+		ch = b.base.primary
+	}
+	b.adjustHopForRelay(pkt, core.NodeID(pkt.From))
+	if err := b.base.sendPacketOn(context.Background(), pkt, ch, false); err != nil {
+		b.base.log.Error("failed to send routing response", "as", core.NodeID(pkt.From), "to", core.NodeID(pkt.To), "error", err)
 	}
 }
 
-// sendNodeInfoResponse sends a NodeInfo response from the specified identity.
-func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, requestID uint32) {
+// nakUndecodable naks a want_ack packet addressed to one of our identities that
+// we could not decode.
+func (b *BridgeNode) nakUndecodable(pkt *pb.MeshPacket) {
+	if b.isOurs(core.NodeID(pkt.To)) {
+		b.sendRouting(b.base.nakFor(pkt), nil)
+	}
+}
+
+// sendNodeInfoResponse sends a NodeInfo response from the specified identity,
+// reporting whether it went out.
+func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, requestID uint32) bool {
 	user := b.buildUserFor(asNode)
 	if user == nil {
-		return
+		return false
 	}
 	if err := checkNodeInfoIdentity(asNode, user); err != nil {
 		b.base.log.Error("refusing NodeInfo response", "as", asNode, "error", err)
-		return
+		return false
 	}
 
 	userBytes, err := proto.Marshal(user)
 	if err != nil {
 		b.base.log.Error("failed to marshal NodeInfo", "error", err)
-		return
+		return false
 	}
 
 	pkt := &pb.MeshPacket{
@@ -677,9 +733,10 @@ func (b *BridgeNode) sendNodeInfoResponse(asNode core.NodeID, to uint32, request
 	b.adjustHopForRelay(pkt, asNode)
 	if err := b.base.sendPacket(context.Background(), pkt, ""); err != nil {
 		b.base.log.Error("failed to send NodeInfo response", "as", asNode, "to", core.NodeID(to), "error", err)
-	} else {
-		b.base.log.Debug("sent NodeInfo response", "as", asNode, "to", core.NodeID(to))
+		return false
 	}
+	b.base.log.Debug("sent NodeInfo response", "as", asNode, "to", core.NodeID(to))
+	return true
 }
 
 // ErrIdentityMismatch reports a NodeInfo whose public key does not derive its

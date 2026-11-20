@@ -39,17 +39,18 @@ func replyChannel(evt eventContext) SendOption {
 }
 
 // respondTelemetry answers a telemetry request addressed to a managed node,
-// subject to a throttle, mirroring the firmware's request handling.
-func (b *BridgeNode) respondTelemetry(evt eventContext, tel *pb.Telemetry) {
+// subject to a throttle, mirroring the firmware's request handling. It reports
+// whether a reply went out.
+func (b *BridgeNode) respondTelemetry(evt eventContext, tel *pb.Telemetry) bool {
 	to := evt.To // the managed node being queried
 	from := evt.From
 
 	if !b.cfg.IsManagedNode(to) {
-		return
+		return false
 	}
 	if !b.base.throttle.canRespond(to, pb.PortNum_TELEMETRY_APP) {
 		b.base.log.Debug("skipping telemetry response due to throttle", "to", to, "from", from)
-		return
+		return false
 	}
 	b.base.log.Info("telemetry request received", "to", to, "from", from)
 
@@ -59,33 +60,37 @@ func (b *BridgeNode) respondTelemetry(evt eventContext, tel *pb.Telemetry) {
 	case *pb.Telemetry_HostMetrics:
 		if _, err := b.SendHostMetricsAs(context.Background(), to, from, opts...); err != nil {
 			b.base.log.Error("failed to send host metrics response", "error", err)
+			return false
 		}
 	default:
 		// Device metrics for explicit device requests and empty requests.
 		if _, err := b.SendTelemetryAs(context.Background(), to, from, b.buildDeviceMetrics(), opts...); err != nil {
 			b.base.log.Error("failed to send telemetry response", "error", err)
+			return false
 		}
 	}
+	return true
 }
 
 // respondNeighborInfo answers a neighbor info request addressed to a managed
-// node using the configured NeighborProvider, subject to a throttle.
-func (b *BridgeNode) respondNeighborInfo(evt eventContext, ni *pb.NeighborInfo) {
+// node using the configured NeighborProvider, subject to a throttle. It reports
+// whether a reply went out.
+func (b *BridgeNode) respondNeighborInfo(evt eventContext, ni *pb.NeighborInfo) bool {
 	to := evt.To
 	from := evt.From
 
 	if !b.cfg.IsManagedNode(to) {
-		return
+		return false
 	}
 
 	// Ignore dummy/interceptable probes (a single neighbor with id=0, snr=0).
 	if len(ni.Neighbors) == 1 && ni.Neighbors[0].NodeId == 0 && ni.Neighbors[0].Snr == 0 {
 		b.base.log.Debug("ignoring dummy neighbor info request", "to", to, "from", from)
-		return
+		return false
 	}
 	if !b.base.throttle.canRespond(to, pb.PortNum_NEIGHBORINFO_APP) {
 		b.base.log.Debug("skipping neighbor info response due to throttle", "to", to, "from", from)
-		return
+		return false
 	}
 	b.base.log.Info("neighbor info request received", "to", to, "from", from)
 
@@ -97,7 +102,9 @@ func (b *BridgeNode) respondNeighborInfo(evt eventContext, ni *pb.NeighborInfo) 
 	opts := []SendOption{replyChannel(evt)}
 	if _, err := b.SendNeighborInfoResponseAs(context.Background(), to, from, neighborIDs, b.cfg.NeighborBroadcastInterval, evt.PacketID, opts...); err != nil {
 		b.base.log.Error("failed to send neighbor info response", "error", err)
+		return false
 	}
+	return true
 }
 
 // --- Traceroute ---
@@ -105,18 +112,13 @@ func (b *BridgeNode) respondNeighborInfo(evt eventContext, ni *pb.NeighborInfo) 
 // handleTracerouteRequest answers a traceroute request on behalf of a managed
 // destination, building the forward route (with placeholders for silent hops
 // and the bridge inserted when relaying for another node) and sending it back.
-func (b *BridgeNode) handleTracerouteRequest(evt eventContext, disco *pb.RouteDiscovery) {
+// It reports whether a reply went out.
+func (b *BridgeNode) handleTracerouteRequest(evt eventContext, disco *pb.RouteDiscovery) bool {
 	to := evt.To
 	from := evt.From
 
 	if !b.cfg.IsManagedNode(to) {
-		return
-	}
-
-	if evt.WantAck {
-		if err := b.SendAckAs(context.Background(), to, from, evt.PacketID); err != nil {
-			b.base.log.Debug("failed to ack traceroute request", "error", err)
-		}
+		return false
 	}
 
 	// Insert placeholders for hops that did not add themselves (older firmware
@@ -141,7 +143,7 @@ func (b *BridgeNode) handleTracerouteRequest(evt eventContext, disco *pb.RouteDi
 	payload, err := proto.Marshal(disco)
 	if err != nil {
 		b.base.log.Error("failed to marshal traceroute response", "error", err)
-		return
+		return false
 	}
 	opts := bridgeSend{
 		from: to, to: from,
@@ -156,7 +158,9 @@ func (b *BridgeNode) handleTracerouteRequest(evt eventContext, disco *pb.RouteDi
 	}
 	if _, err := b.sendAs(context.Background(), opts); err != nil {
 		b.base.log.Error("failed to send traceroute response", "error", err)
+		return false
 	}
+	return true
 }
 
 // handleTracerouteResponse builds the return route for a traceroute response

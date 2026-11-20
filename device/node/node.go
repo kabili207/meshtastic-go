@@ -403,11 +403,12 @@ func (n *Node) requestIsForUs(pkt *pb.MeshPacket) bool {
 	return to.IsBroadcast() || to == n.cfg.NodeID
 }
 
-// respondNodeInfo sends our NodeInfo as a unicast response to a WantResponse request.
-func (n *Node) respondNodeInfo(to uint32, requestID uint32) {
+// respondNodeInfo sends our NodeInfo as a unicast response to a WantResponse
+// request, reporting whether it went out.
+func (n *Node) respondNodeInfo(to uint32, requestID uint32) bool {
 	data := n.buildNodeInfoData(requestID)
 	if data == nil {
-		return
+		return false
 	}
 	pkt := &pb.MeshPacket{
 		From:           n.cfg.NodeID.Uint32(),
@@ -416,19 +417,21 @@ func (n *Node) respondNodeInfo(to uint32, requestID uint32) {
 	}
 	if err := n.base.sendPacket(context.Background(), pkt, ""); err != nil {
 		n.base.log.Error("failed to send NodeInfo response", "to", core.NodeID(to), "error", err)
-	} else {
-		n.base.log.Debug("sent NodeInfo response", "to", core.NodeID(to))
+		return false
 	}
+	n.base.log.Debug("sent NodeInfo response", "to", core.NodeID(to))
+	return true
 }
 
-// respondPosition sends our Position as a unicast response to a WantResponse request.
-func (n *Node) respondPosition(to uint32, requestID uint32) {
+// respondPosition sends our Position as a unicast response to a WantResponse
+// request, reporting whether it went out.
+func (n *Node) respondPosition(to uint32, requestID uint32) bool {
 	// Firmware replies on the position channel, not the one the request came in on,
 	// and sends one reply per window across all requesters. Only a reply that can
 	// actually go out uses up the window.
 	posBytes, ch, ok := n.ourPosition()
 	if !ok || !n.base.throttle.canRespond(n.cfg.NodeID, pb.PortNum_POSITION_APP) {
-		return
+		return false
 	}
 	pkt := &pb.MeshPacket{
 		From: n.cfg.NodeID.Uint32(),
@@ -443,8 +446,30 @@ func (n *Node) respondPosition(to uint32, requestID uint32) {
 	}
 	if err := n.base.sendPacketOn(context.Background(), pkt, ch, false); err != nil {
 		n.base.log.Error("failed to send Position response", "to", core.NodeID(to), "error", err)
-	} else {
-		n.base.log.Debug("sent Position response", "to", core.NodeID(to))
+		return false
+	}
+	n.base.log.Debug("sent Position response", "to", core.NodeID(to))
+	return true
+}
+
+// sendRouting sends an ack or nak built by ackFor or nakFor, on the channel the
+// packet it answers came in on, or the primary for PKI and undecodable packets.
+func (n *Node) sendRouting(pkt *pb.MeshPacket, ch core.ChannelDef) {
+	if pkt == nil {
+		return
+	}
+	if ch == nil {
+		ch = n.base.primary
+	}
+	if err := n.base.sendPacketOn(context.Background(), pkt, ch, false); err != nil {
+		n.base.log.Error("failed to send routing response", "to", core.NodeID(pkt.To), "error", err)
+	}
+}
+
+// nakUndecodable naks a want_ack packet addressed to us that we could not decode.
+func (n *Node) nakUndecodable(pkt *pb.MeshPacket) {
+	if core.NodeID(pkt.To) == n.cfg.NodeID {
+		n.sendRouting(n.base.nakFor(pkt), nil)
 	}
 }
 
@@ -499,6 +524,7 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 	candidates := n.base.channels.LookupAll(pkt.Packet.Channel)
 	if len(candidates) == 0 {
 		n.base.log.Debug("unknown channel hash", "hash", pkt.Packet.Channel)
+		n.nakUndecodable(pkt.Packet)
 		return
 	}
 	for _, ch := range candidates {
@@ -508,12 +534,14 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		}
 		if n.base.isLegacyDM(pkt.Packet, data) {
 			n.base.log.Warn("rejecting channel-encrypted DM", "from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
+			n.nakUndecodable(pkt.Packet)
 			return
 		}
 		n.processDecoded(pkt, data, ch, ch.GetName(), false)
 		return
 	}
 	n.base.log.Debug("PSK decryption failed on every matching channel", "hash", pkt.Packet.Channel)
+	n.nakUndecodable(pkt.Packet)
 }
 
 // processDecoded handles a successfully decoded packet: updates the nodedb
@@ -536,6 +564,8 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		IsPKI:        isPKI,
 		IsSigned:     signed,
 		RawData:      data,
+		WantAck:      pkt.Packet.WantAck,
+		WantResponse: data.WantResponse,
 		IsAutomation: data.GetBitfield()&bitfieldIsAutomation != 0,
 	}
 	if pkt.Packet.GetRxTime() > 0 {
@@ -543,6 +573,17 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 	}
 
 	from := pkt.Packet.From
+
+	// Firmware acks after the modules have run, and not at all when one of them
+	// already replied.
+	replied := false
+	if evt.To == n.cfg.NodeID {
+		defer func() {
+			if !replied {
+				n.sendRouting(n.base.ackFor(pkt.Packet, data), ch)
+			}
+		}()
+	}
 
 	switch data.Portnum {
 	case pb.PortNum_NODEINFO_APP:
@@ -562,7 +603,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 
 		// Respond to NodeInfo requests with our own NodeInfo
 		if data.WantResponse && n.requestIsForUs(pkt.Packet) && n.base.throttle.canRespond(core.NodeID(from), pb.PortNum_NODEINFO_APP) {
-			n.respondNodeInfo(from, pkt.Packet.Id)
+			replied = n.respondNodeInfo(from, pkt.Packet.Id)
 		}
 
 	case pb.PortNum_POSITION_APP:
@@ -575,7 +616,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		n.base.emitEvent(&event.PositionUpdated{Event: evt, Position: pos})
 
 		if data.WantResponse && n.requestIsForUs(pkt.Packet) {
-			n.respondPosition(from, pkt.Packet.Id)
+			replied = n.respondPosition(from, pkt.Packet.Id)
 		}
 
 	case pb.PortNum_TELEMETRY_APP:
@@ -677,6 +718,12 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 			ErrorReason:      routing.GetErrorReason(),
 			OriginalPacketID: data.RequestId,
 		})
+		// The peer could not decrypt our PKI packet for lack of our key, so send
+		// it our NodeInfo, which carries it.
+		if routing.GetErrorReason() == pb.Routing_PKI_UNKNOWN_PUBKEY && evt.To == n.cfg.NodeID &&
+			n.hasPKI() && n.base.throttle.canRespond(evt.From, pb.PortNum_NODEINFO_APP) {
+			n.respondNodeInfo(from, 0)
+		}
 
 	default:
 		n.base.emitEvent(&event.PacketReceived{Event: evt})
