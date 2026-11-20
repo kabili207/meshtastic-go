@@ -208,6 +208,7 @@ func (b *baseNode) encryptOutbound(pkt *pb.MeshPacket, ch core.ChannelDef, requi
 	if data == nil {
 		return nil
 	}
+	b.attachAckProof(pkt, data)
 	from, to := core.NodeID(pkt.From), core.NodeID(pkt.To)
 	var priv []byte
 	if b.privateKeyFor != nil && usesPKI(data.Portnum, to, b.licensed) {
@@ -277,6 +278,43 @@ func (b *baseNode) outboundBitfield(bits uint32, wantResponse bool) uint32 {
 		bits |= bitfieldWantResponse
 	}
 	return bits
+}
+
+// attachAckProof adds firmware's ack proof to an ack or nak we send to a peer
+// whose key we hold, as RoutingModule does with ackProofAttach. Acks travel under
+// the channel key, so without it anyone holding the key could forge one; the
+// proof lets the sender tell a real receipt apart. See crypto.ComputeAckProof.
+func (b *baseNode) attachAckProof(pkt *pb.MeshPacket, data *pb.Data) {
+	to := core.NodeID(pkt.To)
+	if data.Portnum != pb.PortNum_ROUTING_APP || data.RequestId == 0 || to.IsBroadcast() ||
+		b.privateKeyFor == nil || crypto.HasAckProof(data.Payload) {
+		return
+	}
+	priv, peer := b.privateKeyFor(core.NodeID(pkt.From)), b.lookupPublicKey(to)
+	if priv == nil || peer == nil {
+		return
+	}
+	routing, err := crypto.AttachAckProof(data.Payload, priv, peer, pkt.From, pkt.To, data.RequestId)
+	if err != nil {
+		b.log.Debug("not attaching ack proof", "to", to, "error", err)
+		return
+	}
+	data.Payload = routing
+}
+
+// ackProofStatus checks the proof on an ack or nak addressed to one of our
+// identities. VALID means the node the ack claims to come from really sent it;
+// anything else is reported, never acted on, since firmware treats the proof as
+// advisory. Packets not addressed to us are never judged.
+func (b *baseNode) ackProofStatus(pkt *pb.MeshPacket, data *pb.Data) pb.MeshPacket_AckProofStatus {
+	if data.Portnum != pb.PortNum_ROUTING_APP || data.RequestId == 0 || b.privateKeyFor == nil {
+		return pb.MeshPacket_ACK_PROOF_ABSENT
+	}
+	priv := b.privateKeyFor(core.NodeID(pkt.To))
+	if priv == nil {
+		return pb.MeshPacket_ACK_PROOF_ABSENT
+	}
+	return crypto.VerifyAckProof(data.Payload, priv, b.lookupPublicKey(core.NodeID(pkt.From)), pkt.From, pkt.To, data.RequestId)
 }
 
 // decodeOn decrypts a packet with a channel's key, using AES-CCM on an AEAD

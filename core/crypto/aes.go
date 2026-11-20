@@ -103,13 +103,11 @@ func EncryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode ui
 		return nil, fmt.Errorf("key length must be 32 bytes")
 	}
 
-	key, err := curve25519.X25519(privateKey, publicKey)
+	sharedKey, err := sharedSecret(privateKey, publicKey)
 	if err != nil {
-		return nil, errors.New("could not create shared key")
+		return nil, err
 	}
-
-	sharedKey := sha256.Sum256(key[:])
-	block, err := aes.NewCipher(sharedKey[:])
+	block, err := aes.NewCipher(sharedKey)
 	if err != nil {
 		return nil, err
 	}
@@ -140,13 +138,11 @@ func DecryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode ui
 		return nil, fmt.Errorf("key length must be 32 bytes")
 	}
 
-	key, err := curve25519.X25519(privateKey, publicKey)
+	sharedKey, err := sharedSecret(privateKey, publicKey)
 	if err != nil {
-		return nil, errors.New("could not create shared key")
+		return nil, err
 	}
-
-	sharedKey := sha256.Sum256(key[:])
-	block, err := aes.NewCipher(sharedKey[:])
+	block, err := aes.NewCipher(sharedKey)
 	if err != nil {
 		return nil, err
 	}
@@ -161,4 +157,15 @@ func DecryptCurve25519(text, privateKey, publicKey []byte, packetID, fromNode ui
 		return nil, err
 	}
 	return s.Open(nil, iv[:13], cipherText, nil)
+}
+
+// sharedSecret derives the pairwise key two nodes share, as firmware's
+// setCryptoSharedSecret does: SHA-256 of the X25519 result.
+func sharedSecret(privateKey, publicKey []byte) ([]byte, error) {
+	key, err := curve25519.X25519(privateKey, publicKey)
+	if err != nil {
+		return nil, errors.New("could not create shared key")
+	}
+	sum := sha256.Sum256(key)
+	return sum[:], nil
 }

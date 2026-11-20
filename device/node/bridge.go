@@ -438,6 +438,8 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
 		return
 	}
+	// Only our own verification sets this; an inbound value is never trusted.
+	pkt.Packet.AckProofStatus = b.base.ackProofStatus(pkt.Packet, data)
 	var channelKey *string
 	if ch != nil {
 		k := ch.GetKeyString()
@@ -654,6 +656,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 			Event:            evt,
 			ErrorReason:      routing.GetErrorReason(),
 			OriginalPacketID: data.RequestId,
+			AckProof:         pkt.Packet.AckProofStatus,
 		})
 		// The peer could not decrypt a PKI packet from this identity for lack of
 		// its key, so send it the identity's NodeInfo, which carries it.

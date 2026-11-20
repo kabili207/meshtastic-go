@@ -628,6 +628,8 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 			"from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
 		return
 	}
+	// Only our own verification sets this; an inbound value is never trusted.
+	pkt.Packet.AckProofStatus = n.base.ackProofStatus(pkt.Packet, data)
 	evt := event.Event{
 		ChannelName:  channelName,
 		Channel:      ch,
@@ -802,6 +804,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 			Event:            evt,
 			ErrorReason:      routing.GetErrorReason(),
 			OriginalPacketID: data.RequestId,
+			AckProof:         pkt.Packet.AckProofStatus,
 		})
 		// The peer could not decrypt our PKI packet for lack of our key, so send
 		// it our NodeInfo, which carries it.

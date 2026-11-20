@@ -161,6 +161,11 @@ type RoutingReceived struct {
 	ErrorReason pb.Routing_Error
 	// OriginalPacketID is the packet ID this routing message is responding to.
 	OriginalPacketID uint32
+	// AckProof is our check of the proof the sender attached, for an ack or nak
+	// addressed to us. VALID means the node in From really sent it; anything else
+	// is how every ack looked before firmware added proofs, so treat it as
+	// unverified rather than forged.
+	AckProof pb.MeshPacket_AckProofStatus
 }
 
 // PacketReceived is emitted for any successfully decoded packet whose portnum
