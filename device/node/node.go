@@ -63,6 +63,11 @@ type Config struct {
 	// TCPListenAddr for the client API TCP listener. Empty disables.
 	TCPListenAddr string
 
+	// OnConfigChange decides on settings changes a connected app sends. Accepted
+	// changes are shown to apps from then on, but applying them to the running
+	// node, or persisting them, is the handler's job. Nil refuses every change.
+	OnConfigChange clientapi.ConfigChangeHandler
+
 	// PrivateKey is the X25519 private key for this node. If nil, PKI is disabled.
 	PrivateKey []byte
 
@@ -239,6 +244,7 @@ func New(cfg Config) (*Node, error) {
 		Nodes:                 n.db,
 		NextPacketID:          n.base.packetIDs.next,
 		OnOutboundPacket:      n.sendFromClient,
+		OnConfigChange:        cfg.OnConfigChange,
 		TCPListenAddr:         cfg.TCPListenAddr,
 		Logger:                cfg.Logger,
 	})

@@ -22,9 +22,9 @@ func (f fakeNodes) SelfInfo() *pb.NodeInfo {
 func (f fakeNodes) All() []*pb.NodeInfo                    { return f.others }
 func (f fakeNodes) Channel(uint32) (core.ChannelDef, bool) { return nil, false }
 
-func testServer(t *testing.T) *Server {
+func testServer(t *testing.T, opts ...func(*Config)) *Server {
 	t.Helper()
-	return New(Config{
+	cfg := Config{
 		NodeID:    selfID,
 		HwModel:   pb.HardwareModel_PRIVATE_HW,
 		PublicKey: make([]byte, 32),
@@ -34,7 +34,11 @@ func testServer(t *testing.T) *Server {
 			{Num: 0xAA, User: &pb.User{Id: "wrong", LongName: "Peer"}},
 		}},
 		NextPacketID: func() uint32 { return 1 },
-	})
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return New(cfg)
 }
 
 func connect(t *testing.T, s *Server) *stream.Conn {

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
 	"github.com/kabili207/meshtastic-go/core/lora"
@@ -106,6 +107,10 @@ type Config struct {
 	// OnOutboundPacket is called when a client sends a packet to the mesh.
 	OnOutboundPacket OutboundPacketHandler
 
+	// OnConfigChange decides on settings changes clients send. Without it,
+	// every change is refused.
+	OnConfigChange ConfigChangeHandler
+
 	// TCPListenAddr is the address to listen on for TCP connections.
 	// If empty, no TCP listener is started.
 	TCPListenAddr string
@@ -124,10 +129,16 @@ type Server struct {
 
 	// The settings clients see. Firmware keeps these as LocalConfig and
 	// LocalModuleConfig; so do we, so each section maps onto the Config and
-	// ModuleConfig oneofs by name.
+	// ModuleConfig oneofs by name. owner is nil until a client changes it.
 	settingsMu   sync.RWMutex
 	localConfig  *pb.LocalConfig
 	moduleConfig *pb.LocalModuleConfig
+	channels     []*pb.Channel
+	owner        *pb.User
+
+	passkeyMu   sync.Mutex
+	passkey     []byte
+	passkeyTime time.Time
 }
 
 // client is one connected app.
@@ -162,7 +173,36 @@ func New(cfg Config) *Server {
 			Security: &pb.Config_SecurityConfig{PublicKey: cfg.PublicKey},
 		},
 		moduleConfig: &pb.LocalModuleConfig{},
+		channels:     channelTable(cfg.Channels),
 	}
+}
+
+// channelTable lays out every channel slot, unconfigured ones disabled, the way
+// a device reports them.
+func channelTable(set *pb.ChannelSet) []*pb.Channel {
+	table := make([]*pb.Channel, core.MaxChannels)
+	for i := range table {
+		ch := &pb.Channel{Index: int32(i), Role: pb.Channel_DISABLED, Settings: &pb.ChannelSettings{}}
+		if i < len(set.GetSettings()) {
+			ch.Settings = proto.Clone(set.Settings[i]).(*pb.ChannelSettings)
+			ch.Role = pb.Channel_SECONDARY
+			if i == 0 {
+				ch.Role = pb.Channel_PRIMARY
+			}
+		}
+		table[i] = ch
+	}
+	return table
+}
+
+// channel returns a copy of the channel in slot i, or nil when there is none.
+func (s *Server) channel(i int) *pb.Channel {
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	if i < 0 || i >= len(s.channels) {
+		return nil
+	}
+	return proto.Clone(s.channels[i]).(*pb.Channel)
 }
 
 // Start begins the TCP listener if configured. It blocks until the context
@@ -299,15 +339,13 @@ func (s *Server) readLoop(ctx context.Context, c *client) error {
 			}
 			c.readyOnce.Do(func() { close(c.ready) })
 		case *pb.ToRadio_Packet:
-			if decoded := payload.Packet.GetDecoded(); decoded != nil {
-				if decoded.Portnum == pb.PortNum_ADMIN_APP {
-					if err := s.handleAdminMessage(c.conn, payload.Packet, decoded); err != nil {
-						return err
-					}
-					continue
-				}
+			var err error
+			if decoded := payload.Packet.GetDecoded(); decoded.GetPortnum() == pb.PortNum_ADMIN_APP {
+				err = s.handleAdmin(ctx, c.conn, payload.Packet, decoded)
+			} else {
+				err = s.sendToMesh(ctx, c.conn, payload.Packet)
 			}
-			if err := s.sendToMesh(ctx, c.conn, payload.Packet); err != nil {
+			if err != nil {
 				return err
 			}
 		}
@@ -421,12 +459,16 @@ func (s *Server) handleHandshake(conn *stream.Conn, nonce uint32) error {
 func (s *Server) ownNodeInfo() *pb.NodeInfo {
 	info := s.cfg.Nodes.SelfInfo()
 	info.IsFavorite = true
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	if s.owner != nil {
+		info.User = proto.Clone(s.owner).(*pb.User)
+	}
 	if info.User != nil {
+		info.User.Id = s.cfg.NodeID.String()
 		info.User.HwModel = s.cfg.HwModel
 		info.User.PublicKey = s.cfg.PublicKey
-		s.settingsMu.RLock()
 		info.User.Role = s.localConfig.GetDevice().GetRole()
-		s.settingsMu.RUnlock()
 	}
 	return info
 }
@@ -445,20 +487,10 @@ func (s *Server) metadata() *pb.DeviceMetadata {
 	}
 }
 
-// channelFrames sends every channel slot, unconfigured ones disabled, the way a
-// device reports them.
 func (s *Server) channelFrames() []*pb.FromRadio {
 	frames := make([]*pb.FromRadio, core.MaxChannels)
 	for i := range frames {
-		ch := &pb.Channel{Index: int32(i), Role: pb.Channel_DISABLED, Settings: &pb.ChannelSettings{}}
-		if i < len(s.cfg.Channels.Settings) {
-			ch.Settings = s.cfg.Channels.Settings[i]
-			ch.Role = pb.Channel_SECONDARY
-			if i == 0 {
-				ch.Role = pb.Channel_PRIMARY
-			}
-		}
-		frames[i] = &pb.FromRadio{PayloadVariant: &pb.FromRadio_Channel{Channel: ch}}
+		frames[i] = &pb.FromRadio{PayloadVariant: &pb.FromRadio_Channel{Channel: s.channel(i)}}
 	}
 	return frames
 }
@@ -485,17 +517,26 @@ func sections(wrapper proto.Message, local proto.Message) []proto.Message {
 	fields := wd.Oneofs().ByName("payload_variant").Fields()
 	out := make([]proto.Message, 0, fields.Len())
 	for i := 0; i < fields.Len(); i++ {
-		fd := fields.Get(i)
-		w := wrapper.ProtoReflect().New()
-		val := w.NewField(fd)
-		lm := local.ProtoReflect()
-		if lfd := lm.Descriptor().Fields().ByName(fd.Name()); lfd != nil && lm.Has(lfd) {
-			val = protoreflect.ValueOfMessage(proto.Clone(lm.Get(lfd).Message().Interface()).ProtoReflect())
-		}
-		w.Set(fd, val)
-		out = append(out, w.Interface())
+		out = append(out, sectionMessage(wrapper, local, fields.Get(i)))
 	}
 	return out
+}
+
+// sectionMessage builds a wrapper holding a copy of local's field named like fd,
+// or an empty section when local has none set. The private key never leaves the
+// node: it stays out of every security section sent.
+func sectionMessage(wrapper proto.Message, local proto.Message, fd protoreflect.FieldDescriptor) proto.Message {
+	w := wrapper.ProtoReflect().New()
+	val := w.NewField(fd)
+	lm := local.ProtoReflect()
+	if lfd := lm.Descriptor().Fields().ByName(fd.Name()); lfd != nil && lm.Has(lfd) {
+		val = protoreflect.ValueOfMessage(proto.Clone(lm.Get(lfd).Message().Interface()).ProtoReflect())
+	}
+	if sec, ok := val.Message().Interface().(*pb.Config_SecurityConfig); ok {
+		sec.PrivateKey = nil
+	}
+	w.Set(fd, val)
+	return w.Interface()
 }
 
 func (s *Server) listenTCP(ctx context.Context) {
