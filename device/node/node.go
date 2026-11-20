@@ -225,7 +225,10 @@ func New(cfg Config) (*Node, error) {
 		NodeID:                cfg.NodeID,
 		LongName:              cfg.LongName,
 		ShortName:             cfg.ShortName,
+		HwModel:               cfg.HwModel,
+		PublicKey:             cfg.PublicKey,
 		Channels:              cfg.Channels,
+		LoRa:                  loraConfigFor(cfg.Channels, n.base.hopLimit),
 		NodeInfoBroadcastSecs: uint32(cfg.BroadcastNodeInfoInterval.Seconds()),
 		Nodes:                 n.db,
 		NextPacketID:          n.base.packetIDs.next,
@@ -247,6 +250,21 @@ func New(cfg Config) (*Node, error) {
 	})
 
 	return n, nil
+}
+
+// loraConfigFor is the LoRa config reported to clients: the channel set's own,
+// as a channel URL carries it, or else firmware's defaults of LongFast with no
+// region, which makes apps prompt for one.
+func loraConfigFor(set *pb.ChannelSet, hopLimit uint32) *pb.Config_LoRaConfig {
+	if cfg := set.GetLoraConfig(); cfg != nil {
+		return cfg
+	}
+	return &pb.Config_LoRaConfig{
+		UsePreset:   true,
+		ModemPreset: pb.Config_LoRaConfig_LONG_FAST,
+		HopLimit:    hopLimit,
+		TxEnabled:   true,
+	}
 }
 
 // Run starts all components and the transport. It blocks until ctx is cancelled.
