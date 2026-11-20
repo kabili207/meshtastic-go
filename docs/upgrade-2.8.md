@@ -523,11 +523,11 @@ advisory broadcast, not a personal message: firmware deliberately does not
 synthesize a `TEXT_MESSAGE_APP` from the text, and does not fire the
 received-message event that wakes a device. So the library emits its own event
 type rather than a `TextMessage`, and consumers decide what to do with the text.
-An offer (channel, region, or preset) is cached by firmware for the client app and
+An offer (channel, region, preset, or frequency slot) is cached by firmware for the client app and
 never applied; `HasOffer` mirrors that classification. A beacon with neither text
 nor an offer is not emitted, which is where firmware stops acting on one too.
 
-Limits are 100 bytes of message, 11 of offered channel name, and 32 of PSK. They
+Limits are 60 bytes of message, 11 of offered channel name, and 32 of PSK. They
 matter more than usual: a receiving node decodes into fixed-size buffers, so an
 over-long field is not truncated, the whole beacon fails to decode and is dropped.
 `ValidateMeshBeacon` refuses those before a send.

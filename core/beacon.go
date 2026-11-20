@@ -7,11 +7,12 @@ import (
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 )
 
-// MeshBeaconHasOffer reports whether a beacon advertises a channel, region, or
-// preset, as opposed to carrying only text. Firmware caches an offer for the
-// client app to act on and never applies one itself.
+// MeshBeaconHasOffer reports whether a beacon advertises a channel, region,
+// preset, or frequency slot, as opposed to carrying only text. Firmware caches an
+// offer for the client app to act on and never applies one itself.
 func MeshBeaconHasOffer(b *pb.MeshBeacon) bool {
-	return b != nil && (b.OfferChannel != nil || b.OfferRegion != pb.Config_LoRaConfig_UNSET || b.OfferPreset != nil)
+	return b != nil && (b.OfferChannel != nil || b.OfferRegion != pb.Config_LoRaConfig_UNSET ||
+		b.OfferPreset != nil || b.OfferFrequencySlot != nil)
 }
 
 // ValidateMeshBeacon checks the limits firmware enforces before a beacon is

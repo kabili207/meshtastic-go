@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "github.com/kabili207/meshtastic-go/core/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 func presetPtr(p pb.Config_LoRaConfig_ModemPreset) *pb.Config_LoRaConfig_ModemPreset { return &p }
@@ -21,6 +22,7 @@ func TestMeshBeaconHasOffer(t *testing.T) {
 		{"channel", &pb.MeshBeacon{OfferChannel: &pb.ChannelSettings{Name: "Camp"}}, true},
 		{"region", &pb.MeshBeacon{OfferRegion: pb.Config_LoRaConfig_US}, true},
 		{"preset", &pb.MeshBeacon{OfferPreset: presetPtr(pb.Config_LoRaConfig_LONG_FAST)}, true},
+		{"frequency slot", &pb.MeshBeacon{OfferFrequencySlot: proto.Uint32(20)}, true},
 	}
 	for _, tt := range tests {
 		if got := MeshBeaconHasOffer(tt.b); got != tt.want {
@@ -41,6 +43,9 @@ func TestValidateMeshBeacon(t *testing.T) {
 		{"offer only", &pb.MeshBeacon{OfferRegion: pb.Config_LoRaConfig_EU_868}, false},
 		{"message at the limit", &pb.MeshBeacon{Message: strings.Repeat("x", MaxMeshBeaconMessage)}, false},
 		{"message over the limit", &pb.MeshBeacon{Message: strings.Repeat("x", MaxMeshBeaconMessage+1)}, true},
+		// Firmware's nanopb buffer is char[61], terminator included.
+		{"60 bytes fits firmware", &pb.MeshBeacon{Message: strings.Repeat("x", 60)}, false},
+		{"61 bytes does not", &pb.MeshBeacon{Message: strings.Repeat("x", 61)}, true},
 		{"channel name at the limit", &pb.MeshBeacon{OfferChannel: &pb.ChannelSettings{Name: strings.Repeat("c", MaxChannelName)}}, false},
 		{"channel name over the limit", &pb.MeshBeacon{OfferChannel: &pb.ChannelSettings{Name: strings.Repeat("c", MaxChannelName+1)}}, true},
 		{"psk at the limit", &pb.MeshBeacon{OfferChannel: &pb.ChannelSettings{Psk: make([]byte, MaxChannelPSK)}}, false},

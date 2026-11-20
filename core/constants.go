@@ -49,6 +49,8 @@ const (
 	// MaxChannelPSK is the maximum byte length of a channel pre-shared key.
 	MaxChannelPSK = 32
 
-	// MaxMeshBeaconMessage is the maximum byte length of a beacon's text.
-	MaxMeshBeaconMessage = 100
+	// MaxMeshBeaconMessage is the maximum byte length of a beacon's text. The
+	// proto comment says 100, but firmware decodes into a 61-byte nanopb buffer
+	// that includes the terminator.
+	MaxMeshBeaconMessage = 60
 )
