@@ -118,12 +118,8 @@ func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch cor
 
 	b.applyPacketDefaults(packet)
 
-	// Set OK-to-MQTT bitfield flag on outbound Data payloads.
-	if b.okToMQTT {
-		if decoded := packet.GetDecoded(); decoded != nil {
-			bf := decoded.GetBitfield() | 1 // bit 0 = OK to MQTT
-			decoded.Bitfield = &bf
-		}
+	if decoded := packet.GetDecoded(); decoded != nil {
+		decoded.Bitfield = proto.Uint32(b.outboundBitfield(decoded.GetBitfield(), decoded.WantResponse))
 	}
 
 	if err := b.encryptOutbound(packet, ch, requirePKI); err != nil {
@@ -246,6 +242,19 @@ func (b *baseNode) encryptOutbound(pkt *pb.MeshPacket, ch core.ChannelDef, requi
 	pkt.PkiEncrypted = true
 	pkt.PayloadVariant = &pb.MeshPacket_Encrypted{Encrypted: encrypted}
 	return nil
+}
+
+// outboundBitfield builds the Data bitfield for a packet we originate. Like
+// firmware's perhapsEncode, the field is always present, carrying the configured
+// MQTT consent and mirroring want_response, on top of any bits already set.
+func (b *baseNode) outboundBitfield(bits uint32, wantResponse bool) uint32 {
+	if b.okToMQTT {
+		bits |= bitfieldOkToMQTT
+	}
+	if wantResponse {
+		bits |= bitfieldWantResponse
+	}
+	return bits
 }
 
 // isLegacyDM reports whether a channel-decrypted packet is a text DM to one of

@@ -23,7 +23,7 @@ func sentBitfield(t *testing.T, mt *mockTransport) uint32 {
 
 func TestBridgeSendTextAsAutomationBit(t *testing.T) {
 	mt := newMockTransport()
-	b := newTestBridge(t, mt)
+	b := newTestBridge(t, mt, func(c *BridgeConfig) { c.OkToMQTT = true })
 
 	if _, err := b.SendTextAs(context.Background(), b.cfg.NodeID, core.BroadcastNodeID, "human"); err != nil {
 		t.Fatal(err)
@@ -86,5 +86,36 @@ func TestReceivedAutomationBitSurfacesOnEvent(t *testing.T) {
 				t.Errorf("IsAutomation = %v, want %v", got.IsAutomation, tc.want)
 			}
 		})
+	}
+}
+
+// The MQTT consent bit follows config on every send path. Firmware always marks
+// the bitfield present on packets it originates, consent or not.
+func TestOkToMQTTFollowsConfig(t *testing.T) {
+	for _, ok := range []bool{false, true} {
+		mt := newMockTransport()
+		b := newTestBridge(t, mt, func(c *BridgeConfig) { c.OkToMQTT = ok })
+
+		sends := map[string]func() error{
+			"sendAs": func() error {
+				_, err := b.SendTextAs(context.Background(), b.cfg.NodeID, core.BroadcastNodeID, "hi")
+				return err
+			},
+			"sendPacket": func() error {
+				return b.SendDataAs(context.Background(), b.cfg.NodeID, core.BroadcastNodeID, &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP}, false)
+			},
+		}
+		for name, send := range sends {
+			if err := send(); err != nil {
+				t.Fatal(err)
+			}
+			_, data := decryptSent(t, mt)
+			if data.Bitfield == nil {
+				t.Errorf("OkToMQTT=%v, %s: bitfield absent", ok, name)
+			}
+			if got := data.GetBitfield()&bitfieldOkToMQTT != 0; got != ok {
+				t.Errorf("OkToMQTT=%v, %s: consent bit = %v", ok, name, got)
+			}
+		}
 	}
 }

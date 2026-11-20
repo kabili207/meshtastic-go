@@ -67,14 +67,13 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 		return 0, fmt.Errorf("payload too large: %d bytes exceeds max %d", len(s.payload), core.MaxDataPayload)
 	}
 
-	bitfield := uint32(bitfieldOkToMQTT)
+	var bitfield uint32
 	if s.automation {
 		bitfield |= bitfieldIsAutomation
 	}
 	data := &pb.Data{
 		Portnum:   s.portnum,
 		Payload:   s.payload,
-		Bitfield:  &bitfield,
 		RequestId: s.requestID,
 		ReplyId:   s.replyID,
 		Emoji:     s.emoji,
@@ -87,9 +86,8 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 			s.portnum == pb.PortNum_POSITION_APP ||
 			s.portnum == pb.PortNum_TRACEROUTE_APP) {
 		data.WantResponse = true
-		bf := bitfield | bitfieldWantResponse
-		data.Bitfield = &bf
 	}
+	data.Bitfield = proto.Uint32(b.base.outboundBitfield(bitfield, data.WantResponse))
 
 	// Traceroute relies on WantAck to trigger firmware response handling.
 	wantAck := s.wantAck || (s.portnum == pb.PortNum_TRACEROUTE_APP && s.wantResponse)
