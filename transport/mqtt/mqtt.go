@@ -66,7 +66,10 @@ const (
 	// MapTopic is the topic suffix for map reports.
 	MapTopic = "/2/map/"
 	// PKITopic is the topic suffix for PKI-encrypted packets.
-	PKITopic = ProtoTopic + "PKI/"
+	PKITopic = ProtoTopic + PKIChannel + "/"
+	// PKIChannel is the channel ID firmware publishes every PKI-encrypted packet
+	// under, whichever channel it was sent on.
+	PKIChannel = "PKI"
 )
 
 // Default MQTT broker settings.
@@ -199,23 +202,35 @@ func (t *Transport) SetStateHandler(fn transport.StateHandler) {
 	t.stateHandler = fn
 }
 
-// AddChannel subscribes to a channel.
+// AddChannel subscribes to a channel. The first channel also subscribes to the
+// PKI topic, where firmware publishes all PKI-encrypted packets.
 func (t *Transport) AddChannel(channelName string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	first := len(t.channels) == 0
 	t.channels[channelName] = struct{}{}
 
 	if t.client != nil && t.client.IsConnected() {
-		topic := t.getTopicForChannel(channelName) + "/+"
-		t.client.Subscribe(topic, 0, t.handleMessage)
-		t.log.Debug("subscribed to channel", "channel", channelName, "topic", topic)
+		t.subscribe(channelName)
+		if first {
+			t.subscribe(PKIChannel)
+		}
 	}
+}
+
+func (t *Transport) subscribe(channel string) {
+	topic := t.getTopicForChannel(channel) + "/+"
+	t.client.Subscribe(topic, 0, t.handleMessage)
+	t.log.Debug("subscribed to channel", "channel", channel, "topic", topic)
 }
 
 // SendPacket implements raw.RawTransport.
 func (t *Transport) SendPacket(channel string, packet *pb.MeshPacket) error {
 	if !t.IsConnected() {
 		return errors.New("not connected")
+	}
+	if packet.PkiEncrypted {
+		channel = PKIChannel
 	}
 
 	se := &pb.ServiceEnvelope{
@@ -332,10 +347,11 @@ func (t *Transport) onConnected(_ paho.Client) {
 	handler := t.stateHandler
 	t.mu.Unlock()
 
-	// Resubscribe to all channels
 	for _, ch := range channels {
-		topic := t.getTopicForChannel(ch) + "/+"
-		t.client.Subscribe(topic, 0, t.handleMessage)
+		t.subscribe(ch)
+	}
+	if len(channels) > 0 {
+		t.subscribe(PKIChannel)
 	}
 
 	t.log.Info("connected to MQTT broker", "broker", t.cfg.Broker)
