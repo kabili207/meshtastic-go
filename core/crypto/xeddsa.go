@@ -29,11 +29,6 @@ const (
 	// XEdDSASignatureSize is the byte length of an XEdDSA signature.
 	XEdDSASignatureSize = 64
 
-	// XEdDSASignatureFieldBytes is what the signature adds to an encoded Data: one
-	// tag byte (field 10 is below 16), one length byte (64 is below 128), and the
-	// signature. Firmware asserts this stays exact; the receive policy depends on it.
-	XEdDSASignatureFieldBytes = XEdDSASignatureSize + 2
-
 	// xeddsaRandomSize is the length of the random value mixed into the nonce.
 	xeddsaRandomSize = 32
 )
@@ -110,31 +105,70 @@ func VerifyXEdDSA(publicKey, message, signature []byte) bool {
 	return ed25519.Verify(edPublicKey, message, signature)
 }
 
-// packetSigningBuffer lays out the bytes a packet signature covers: the sender, the
-// packet id, and the port number, each little-endian, followed by the decoded payload.
+const (
+	// signingVersion leads every signing buffer, so a buffer built under one layout can
+	// never be reinterpreted as one built under another.
+	signingVersion = 0x01
+	// signedHeaderLen is version, eight uint32 fields, and the flags byte. Fixed length
+	// is what keeps the encoding unambiguous: payload bytes can never be re-split into
+	// header fields.
+	signedHeaderLen = 1 + 8*4 + 1
+
+	signedFlagWantResponse = 0x01
+	signedFlagHasBitfield  = 0x02
+)
+
+// ErrPayloadTooLarge reports a Data payload too long to have come off the wire.
+var ErrPayloadTooLarge = errors.New("payload exceeds the Data payload limit")
+
+// packetSigningBuffer lays out the bytes a packet signature covers, matching firmware's
+// buildSigningBuffer (CryptoEngine.cpp, signing version 1):
 //
-// Binding the metadata is the point. Signing the payload alone would let an attacker
-// replay it under a different id, reattribute it to another sender, or move it to a
-// different port to have the receiver interpret it as something else.
-func packetSigningBuffer(from, packetID uint32, portnum pb.PortNum, payload []byte) []byte {
-	buf := make([]byte, 12, 12+len(payload))
-	binary.LittleEndian.PutUint32(buf[0:4], from)
-	binary.LittleEndian.PutUint32(buf[4:8], packetID)
-	binary.LittleEndian.PutUint32(buf[8:12], uint32(portnum))
-	return append(buf, payload...)
+//	version | from | id | to | portnum | request_id | reply_id | emoji | bitfield | flags | payload
+//
+// Integers are little-endian. An absent bitfield signs as zero, with its presence
+// carried in the flags byte alongside want_response. The channel and hop fields are
+// left out because they change in transit.
+func packetSigningBuffer(from, packetID, to uint32, data *pb.Data) ([]byte, error) {
+	if len(data.Payload) > int(pb.Constants_DATA_PAYLOAD_LEN) {
+		return nil, ErrPayloadTooLarge
+	}
+	buf := make([]byte, signedHeaderLen, signedHeaderLen+len(data.Payload))
+	buf[0] = signingVersion
+	for i, v := range []uint32{from, packetID, to, uint32(data.Portnum), data.RequestId, data.ReplyId, data.Emoji, data.GetBitfield()} {
+		binary.LittleEndian.PutUint32(buf[1+4*i:], v)
+	}
+	var flags byte
+	if data.WantResponse {
+		flags |= signedFlagWantResponse
+	}
+	if data.Bitfield != nil {
+		flags |= signedFlagHasBitfield
+	}
+	buf[signedHeaderLen-1] = flags
+	return append(buf, data.Payload...), nil
 }
 
-// SignPacketData signs a packet's decoded payload together with the metadata that binds
-// it to this sender, id, and port. The payload is the plaintext, signed before any
-// encryption is applied.
-func SignPacketData(privateKey []byte, from, packetID uint32, portnum pb.PortNum, payload []byte) ([]byte, error) {
-	return SignXEdDSA(privateKey, packetSigningBuffer(from, packetID, portnum, payload))
+// SignPacketData signs a packet's decoded Data together with the metadata that binds it
+// to this sender, id, and destination. Data is the plaintext, signed before encryption,
+// and must not change after signing: the bitfield and reply fields are covered too.
+func SignPacketData(privateKey []byte, from, packetID, to uint32, data *pb.Data) ([]byte, error) {
+	buf, err := packetSigningBuffer(from, packetID, to, data)
+	if err != nil {
+		return nil, err
+	}
+	return SignXEdDSA(privateKey, buf)
 }
 
-// VerifyPacketData reports whether signature authenticates a packet's decoded payload as
-// coming from the holder of publicKey, for this exact sender, id, and port.
-func VerifyPacketData(publicKey []byte, from, packetID uint32, portnum pb.PortNum, payload, signature []byte) bool {
-	return VerifyXEdDSA(publicKey, packetSigningBuffer(from, packetID, portnum, payload), signature)
+// VerifyPacketData reports whether signature authenticates a packet's decoded Data as
+// coming from the holder of publicKey, for this exact sender, id, and destination.
+// Data must be exactly as received, before any local merging of bitfield state.
+func VerifyPacketData(publicKey []byte, from, packetID, to uint32, data *pb.Data, signature []byte) bool {
+	buf, err := packetSigningBuffer(from, packetID, to, data)
+	if err != nil {
+		return false
+	}
+	return VerifyXEdDSA(publicKey, buf, signature)
 }
 
 // PublicKeyFromPrivate recovers the X25519 public key belonging to a private key, for

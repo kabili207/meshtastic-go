@@ -12,21 +12,21 @@ import (
 // XEdDSA packet signing, mirroring firmware's perhapsEncode on the way out and
 // checkXeddsaReceivePolicy on the way in. See docs/upgrade-2.8.md, phase 3.
 
-// signOutbound signs a Data we originate, when firmware would. We own signing for
-// our own packets, so any signature a caller preset is discarded first: a stale one
-// would hard-fail verification at every receiver that knows our key.
+// signOutbound signs a Data we originate, choosing packets the way firmware's
+// perhapsEncode does under BALANCED and STRICT. We own signing for our own packets,
+// so any signature a caller preset is discarded first: a stale one would hard-fail
+// verification at every receiver that knows our key.
 //
-// Firmware signs non-PKI broadcasts, and unicasts too when licensed, since licensed
-// traffic stays plaintext. It signs only when the signed encoding still fits the
-// radio frame, checked on the exact encoded size rather than a payload heuristic.
+// Unlike firmware, COMPATIBLE signs too. Every policy accepts a valid signature, and
+// signing is what lets peers bind our identities to their keys.
 func (b *baseNode) signOutbound(data *pb.Data, from, packetID uint32, to core.NodeID, pki bool) {
 	data.XeddsaSignature = nil
-	if pki || !(b.licensed || to.IsBroadcast()) || b.privateKeyFor == nil {
+	if pki || b.privateKeyFor == nil || !signableOutbound(data.Portnum, to, b.licensed) {
 		return
 	}
 	key := b.privateKeyFor(core.NodeID(from))
 	if key == nil {
-		// A broadcast that should have been signed but was not: peers that know this
+		// A packet that should have been signed but was not: peers that know this
 		// identity as a signer will drop it, and new peers will never mark it verified.
 		b.log.Warn("no private key to sign outbound packet", "from", core.NodeID(from), "packetID", packetID, "portnum", data.Portnum)
 		return
@@ -35,13 +35,27 @@ func (b *baseNode) signOutbound(data *pb.Data, from, packetID uint32, to core.No
 		b.log.Debug("outbound packet too large to sign", "from", core.NodeID(from), "packetID", packetID, "portnum", data.Portnum)
 		return
 	}
-	sig, err := crypto.SignPacketData(key, from, packetID, data.Portnum, data.Payload)
+	sig, err := crypto.SignPacketData(key, from, packetID, to.Uint32(), data)
 	if err != nil {
 		b.log.Warn("signing packet", "packetID", packetID, "error", err)
 		return
 	}
 	data.XeddsaSignature = sig
 	b.log.Debug("signed outbound packet", "from", core.NodeID(from), "packetID", packetID, "portnum", data.Portnum)
+}
+
+// signableOutbound reports whether firmware would sign a non-PKI packet. NodeInfo
+// and position are signed even when unicast, since they never travel under PKI and
+// a NodeInfo carries the key peers will use. Licensed nodes have no PKI, so they sign
+// unicasts too, except acks. A traceroute is never signed: every hop rewrites it.
+func signableOutbound(portnum pb.PortNum, to core.NodeID, licensed bool) bool {
+	if portnum == pb.PortNum_TRACEROUTE_APP {
+		return false
+	}
+	return to.IsBroadcast() ||
+		portnum == pb.PortNum_NODEINFO_APP ||
+		portnum == pb.PortNum_POSITION_APP ||
+		(licensed && portnum != pb.PortNum_ROUTING_APP)
 }
 
 // signedDataFits reports whether data, with a signature attached, still fits a
@@ -58,8 +72,13 @@ func signedDataFits(data *pb.Data) bool {
 // from our own verification.
 func (b *baseNode) checkSignaturePolicy(pkt *pb.MeshPacket, data *pb.Data, isPKI bool) (signed, accept bool) {
 	pkt.XeddsaSigned = false
+	// Every hop rewrites a traceroute, so a signature on one cannot verify past the
+	// first hop. Ignore it, and never require one.
+	if data.Portnum == pb.PortNum_TRACEROUTE_APP {
+		return false, true
+	}
 	sig := data.XeddsaSignature
-	policy := b.signaturePolicy
+	strict := b.signaturePolicy == pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT
 	from := core.NodeID(pkt.From)
 
 	switch {
@@ -67,8 +86,12 @@ func (b *baseNode) checkSignaturePolicy(pkt *pb.MeshPacket, data *pb.Data, isPKI
 		// Authoritative keys only. Verifying against a key learned from an unsigned
 		// NodeInfo would let a planted key mark its own node a signer.
 		if key := b.lookupPublicKey(from); key != nil {
-			if !crypto.VerifyPacketData(key, pkt.From, pkt.Id, data.Portnum, data.Payload, sig) {
+			if !crypto.VerifyPacketData(key, pkt.From, pkt.Id, pkt.To, data, sig) {
 				b.log.Warn("XEdDSA signature failed to verify", "from", from, "packetID", pkt.Id)
+				return false, false
+			}
+			if !signedNodeInfoConsistent(pkt.From, data, key) {
+				b.log.Warn("signed NodeInfo claims a key that did not sign it", "from", from, "packetID", pkt.Id)
 				return false, false
 			}
 			b.markSigner(pkt.From)
@@ -84,69 +107,39 @@ func (b *baseNode) checkSignaturePolicy(pkt *pb.MeshPacket, data *pb.Data, isPKI
 			return false, false
 		}
 		// Signed, but we hold no key to check it against.
-		return false, policy != pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT
+		return false, !strict
 
 	case len(sig) != 0:
-		// Honest senders emit exactly 0 or 64 bytes. A partial signature is dropped
-		// rather than treated as unsigned: its bytes would otherwise inflate the size
-		// estimate below and let a forged broadcast dodge the downgrade drop.
+		// Honest senders emit exactly 0 or 64 bytes.
 		b.log.Warn("malformed XEdDSA signature", "from", from, "size", len(sig))
 		return false, false
 
 	default:
-		if isPKI {
-			return false, true
-		}
-		switch policy {
-		case pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT:
+		// Only STRICT drops a packet for being unsigned; pinIdentity guards a known
+		// signer's identity under BALANCED. Acks carry their own proof, and key
+		// verification runs before either side has a key to sign with.
+		if strict && !isPKI &&
+			data.Portnum != pb.PortNum_ROUTING_APP &&
+			data.Portnum != pb.PortNum_KEY_VERIFICATION_APP {
 			return false, false
-		case pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_BALANCED:
-			// Reject only what a signer always signs: non-PKI broadcasts whose signed
-			// encoding would have fit, plus unicasts when licensed. Mirrors signOutbound.
-			if b.isKnownSigner(pkt.From) && (core.NodeID(pkt.To).IsBroadcast() || b.licensed) {
-				if canonicalSignableSize(data)+crypto.XEdDSASignatureFieldBytes+core.LoraHeaderLength <= core.MaxLoraPayload {
-					b.log.Warn("dropping unsigned packet from a node that previously signed", "from", from)
-					return false, false
-				}
-			}
-			return false, true
-		default:
-			return false, true
 		}
+		return false, true
 	}
 }
 
-// canonicalSignableSize sizes a Data the way the sender's signedDataFits gate would
-// have, with padding stripped. Unknown fields inside a typed payload survive in its
-// length and would otherwise let a forger inflate an unsigned broadcast past the
-// signable budget, making it look like the sender legitimately could not sign.
-func canonicalSignableSize(data *pb.Data) int {
-	var inner proto.Message
-	switch data.Portnum {
-	case pb.PortNum_POSITION_APP:
-		inner = &pb.Position{}
-	case pb.PortNum_TELEMETRY_APP:
-		inner = &pb.Telemetry{}
-	case pb.PortNum_WAYPOINT_APP:
-		inner = &pb.Waypoint{}
-	case pb.PortNum_NODEINFO_APP:
-		inner = &pb.User{}
-	default:
-		return proto.Size(data)
+// signedNodeInfoConsistent reports whether a NodeInfo verified against a stored key
+// claims that same key, bound to the sender's ID. Without this a node could sign a
+// NodeInfo that swaps in someone else's key. A keyless or undecodable payload has
+// nothing to compare, and pinIdentity handles it.
+func signedNodeInfoConsistent(from uint32, data *pb.Data, signerKey []byte) bool {
+	if data.Portnum != pb.PortNum_NODEINFO_APP {
+		return true
 	}
-
-	opts := proto.UnmarshalOptions{DiscardUnknown: true}
-	if err := opts.Unmarshal(data.Payload, inner); err != nil {
-		return proto.Size(data)
+	user := &pb.User{}
+	if err := proto.Unmarshal(data.Payload, user); err != nil || len(user.PublicKey) != crypto.PublicKeySize {
+		return true
 	}
-	canonical := proto.Size(inner)
-	if canonical > len(data.Payload) {
-		return proto.Size(data)
-	}
-	// Only the length matters when sizing a bytes field.
-	trimmed := proto.Clone(data).(*pb.Data)
-	trimmed.Payload = data.Payload[:canonical]
-	return proto.Size(trimmed)
+	return bytes.Equal(user.PublicKey, signerKey) && core.NodeID(from).MatchesPublicKey(user.PublicKey)
 }
 
 type bootstrapResult int
@@ -171,7 +164,7 @@ func (b *baseNode) verifyFirstContactNodeInfo(pkt *pb.MeshPacket, data *pb.Data)
 	}
 	key := user.PublicKey
 	if !core.NodeID(pkt.From).MatchesPublicKey(key) ||
-		!crypto.VerifyPacketData(key, pkt.From, pkt.Id, data.Portnum, data.Payload, data.XeddsaSignature) {
+		!crypto.VerifyPacketData(key, pkt.From, pkt.Id, pkt.To, data, data.XeddsaSignature) {
 		return bootstrapInvalid
 	}
 	if b.db == nil {
@@ -187,26 +180,54 @@ func (b *baseNode) verifyFirstContactNodeInfo(pkt *pb.MeshPacket, data *pb.Data)
 	return bootstrapVerified
 }
 
-// pinIdentity applies firmware's identity-write rules before a NodeInfo is stored,
-// reporting whether the update should go ahead. An unsigned NodeInfo may never
-// replace a public key we already hold, and a node known to sign may only change
-// its identity through a signed NodeInfo. user may be adjusted in place.
+// pinIdentity applies firmware's identity-write rules (NodeDB::updateUser) before a
+// NodeInfo is stored, reporting whether the update should go ahead:
+//   - under BALANCED and STRICT, a node known to sign may only change its identity
+//     through a signed NodeInfo
+//   - a NodeInfo advertising one of our own keys is refused
+//   - once we hold a key for a node, a NodeInfo carrying a different key, or none,
+//     is refused outright, names included
 func (b *baseNode) pinIdentity(from uint32, user *pb.User, signed bool) bool {
-	if signed || b.db == nil {
+	if b.db == nil {
 		return true
 	}
 	existing := b.db.Get(from)
+	if !signed && existing != nil && existing.HasXeddsaSigned &&
+		b.signaturePolicy != pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_COMPATIBLE {
+		b.log.Debug("refusing unsigned NodeInfo from a node that signs", "from", core.NodeID(from))
+		return false
+	}
+	if b.isOwnPublicKey(from, user.PublicKey) {
+		b.log.Warn("remote node advertised one of our public keys", "from", core.NodeID(from))
+		return false
+	}
 	if existing == nil || existing.User == nil {
 		return true
 	}
-	if existing.HasXeddsaSigned {
+	if held := existing.User.PublicKey; len(held) == crypto.PublicKeySize && !bytes.Equal(held, user.PublicKey) {
+		b.log.Warn("NodeInfo public key does not match the one held", "from", core.NodeID(from))
 		return false
 	}
-	held := existing.User.PublicKey
-	if len(held) == crypto.PublicKeySize && !bytes.Equal(held, user.PublicKey) {
-		user.PublicKey = bytes.Clone(held)
-	}
 	return true
+}
+
+// isOwnPublicKey reports whether key belongs to an identity we hold the private key
+// for, advertised by some other node. Our node IDs derive from our keys, so the key
+// names the identity to check.
+func (b *baseNode) isOwnPublicKey(from uint32, key []byte) bool {
+	if b.privateKeyFor == nil || len(key) != crypto.PublicKeySize {
+		return false
+	}
+	id, err := core.NodeIDFromPublicKey(key)
+	if err != nil || id.Uint32() == from {
+		return false
+	}
+	priv := b.privateKeyFor(id)
+	if priv == nil {
+		return false
+	}
+	ours, err := crypto.PublicKeyFromPrivate(priv)
+	return err == nil && bytes.Equal(ours, key)
 }
 
 func (b *baseNode) lookupPublicKey(id core.NodeID) []byte {
@@ -218,14 +239,6 @@ func (b *baseNode) lookupPublicKey(id core.NodeID) []byte {
 		return nil
 	}
 	return key
-}
-
-func (b *baseNode) isKnownSigner(from uint32) bool {
-	if b.db == nil {
-		return false
-	}
-	info := b.db.Get(from)
-	return info != nil && info.HasXeddsaSigned
 }
 
 func (b *baseNode) markSigner(from uint32) {

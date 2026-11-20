@@ -198,13 +198,20 @@ must be interpreted.
 
 ### Signing input
 
-A flat buffer, all little-endian, over the **decoded** payload before encryption:
+Firmware's `buildSigningBuffer`, signing version 1 (since v2.8.1, #11422). A
+fixed-length header, all little-endian, then the **decoded** payload before
+encryption:
 
 ```
-[ from(u32) | packet_id(u32) | portnum(u32) | payload(N) ]
+[ 0x01 | from | id | to | portnum | request_id | reply_id | emoji | bitfield | flags(u8) | payload(N) ]
 ```
 
-Covering the metadata prevents replay, reattribution, and portnum redirection.
+An absent bitfield signs as zero; `flags` bit 0 is `want_response` and bit 1 is
+"bitfield present". Covering `to` stops a signed broadcast being re-addressed as a
+DM, and covering the bitfield protects the `ok_to_mqtt` consent bit. The channel and
+hop fields are left out because they change in transit, which also makes traceroutes
+unsignable. Receivers verify the `Data` as received, before merging the bitfield's
+`want_response` bit into the field.
 
 ### Keys
 
@@ -221,14 +228,17 @@ per peer because the field inversion is expensive; worth mirroring.
 
 ### When a sender signs
 
-All three conditions must hold:
+Firmware 2.8.2 (#12191) signs only under `BALANCED` and `STRICT`, never on an AEAD
+channel, and only when all of these hold:
 
-- not `pki_encrypted`, and
-- `is_licensed` **or** the packet is a broadcast, and
-- the signed `Data` still fits the radio payload.
+- not `pki_encrypted`
+- not `TRACEROUTE_APP`
+- a broadcast, **or** `NODEINFO_APP` or `POSITION_APP` (signed even when unicast,
+  since they never travel under PKI), **or** licensed and not `ROUTING_APP`
+- the signed `Data` still fits the radio payload
 
-The signature adds exactly 66 bytes: 64 signature + 1 tag byte + 1 length byte.
-Firmware asserts this stays exact.
+We sign under `COMPATIBLE` too, by choice: every policy accepts a valid signature,
+and signing is what lets peers bind a bridged identity to its key.
 
 ### Receive policy
 
@@ -249,9 +259,13 @@ Policy modes, from `Config.SecurityConfig.PacketSignaturePolicy`:
 
 | Mode | Behavior |
 | --- | --- |
-| `COMPATIBLE` (wire default) | Accept unsigned; still drop malformed |
-| `BALANCED` | Drop unsigned only from nodes known to sign, and only for non-PKI broadcasts whose signed encoding would have fit |
-| `STRICT` | Drop all unsigned |
+| `COMPATIBLE` (wire default) | Accept unsigned; still drop malformed or invalid signatures |
+| `BALANCED` | Accept unsigned packets, but refuse unsigned identity updates from a known signer |
+| `STRICT` | As `BALANCED`, and drop unsigned packets except PKI, `ROUTING_APP` and `KEY_VERIFICATION_APP` |
+
+In every mode a signature on a `TRACEROUTE_APP` packet is ignored, and a signed
+NodeInfo verified against a held key must carry that same key, bound to the sender's
+ID.
 
 ### Reference
 
@@ -270,32 +284,30 @@ policy layer is `device/node/signing.go`, shared by `Node` and `BridgeNode` thro
 `baseNode`. Both configs gain `SignaturePolicy` (zero value `COMPATIBLE`) and
 `Licensed`. `event.Event` gains `IsSigned`, set only from our own verification.
 
-Reading the firmware more closely turned up a rule the plan did not have, and
-without it the rest is hollow: `NodeDB::updateUser` refuses to let an unsigned
-NodeInfo replace a public key it already holds, and refuses identity writes
-entirely from a known signer sending unsigned. Otherwise a forger plants a key with
-an unsigned NodeInfo and then signs with it. `pinIdentity` applies both rules ahead
-of the NodeInfo handlers. It also covers firmware #11432, an empty key in an unsigned
-NodeInfo erasing a stored one.
+`pinIdentity` applies `NodeDB::updateUser`'s identity rules ahead of the NodeInfo
+handlers. Once a key is held, a NodeInfo carrying a different key, or none, is
+dropped whole, names included. A NodeInfo advertising one of our own keys is
+dropped. Under `BALANCED` and `STRICT`, a known signer can only change its identity
+through a signed NodeInfo.
 
-The known-signer state `BALANCED` needs is `NodeInfo.HasXeddsaSigned`, a field the
-2.8 protobufs added, so no schema work was needed after all. The bridge's
-`PublicKeyForNode` callback is treated as authoritative, with a key learned from a
-NodeInfo as the pinned fallback.
-
-Two firmware details were confirmed rather than assumed. `canonicalSignableSize`
-re-decodes typed payloads with `DiscardUnknown` before sizing, so unknown-field
-padding cannot inflate an unsigned broadcast past the signable budget. And the
-inbound `xeddsa_signed` flag is cleared at the UDP and MQTT transports and
-overwritten by the pipeline's own verdict, never read.
+The known-signer state is `NodeInfo.HasXeddsaSigned`, a field the 2.8 protobufs
+added. The bridge's `PublicKeyForNode` callback is treated as authoritative, with a
+key learned from a NodeInfo as the pinned fallback. The inbound `xeddsa_signed` flag
+is cleared at the UDP and MQTT transports and overwritten by the pipeline's own
+verdict, never read.
 
 `Licensed` is one flag for the whole bridge rather than per managed identity;
 firmware has a single `owner.is_licensed` too.
 
-**Verified against real hardware.** With a bridge running this code against 2.8
-nodes, the bridged identities show as "verified" in the Meshtastic app. That is the
-full path end to end: the signed first-contact NodeInfo accepted, the key-to-node-ID
-binding satisfied, and the peer marking the identity as a known signer.
+The packet-level vectors in `core/crypto` are buffers dumped from firmware v2.8.2's
+own `buildSigningBuffer`; the sign primitive has its own vectors. The policy tests
+follow firmware's `test_packet_signing` matrix.
+
+**Hardware.** The original implementation was verified end to end against the
+v2.8.0 alpha on 2026-09-06: bridged identities showed as "verified" in the app.
+Firmware then changed the signing buffer in v2.8.1 and the policy in v2.8.2, which
+broke signed traffic in both directions until this was brought in line. The current
+layout has not yet been re-tested on hardware.
 
 ---
 
@@ -618,7 +630,8 @@ its own review.
    a branch until the firmware leaves alpha?
 3. **Signing default.** Resolved: `COMPATIBLE`. It is the firmware wire default and
    the enum's zero value, so a zero-valued config field means it without ceremony.
-   Callers opt into `BALANCED` or `STRICT`.
+   Callers opt into `BALANCED` or `STRICT`. Unlike firmware, `COMPATIBLE` still
+   signs outbound packets; see "When a sender signs".
 4. **Channel identity is name-only in too many places.** Resolved; see "Channel
    identity" under phase 5. The original note: `WithChannel` and
    `ChannelRegistry.LookupByName` resolved a channel by name, so two registered

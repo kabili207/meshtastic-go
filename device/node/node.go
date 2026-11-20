@@ -67,8 +67,10 @@ type Config struct {
 
 	// SignaturePolicy controls how received packets are authenticated. The zero
 	// value is COMPATIBLE, the firmware wire default: unsigned packets are
-	// accepted, malformed or invalid signatures are dropped. Outbound packets are
-	// signed whenever PrivateKey is set, regardless of policy.
+	// accepted, malformed or invalid signatures are dropped. BALANCED also refuses
+	// unsigned identity changes from nodes known to sign, and STRICT drops most
+	// unsigned packets. When PrivateKey is set, outbound packets are signed under
+	// every policy, choosing which packets the way firmware's BALANCED does.
 	SignaturePolicy pb.Config_SecurityConfig_PacketSignaturePolicy
 
 	// Licensed marks this node as a licensed (amateur radio) operator. Licensed
@@ -512,8 +514,6 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 				n.db.SetChannel(from, ch)
 			}
 			n.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
-		} else {
-			n.base.log.Debug("ignoring unsigned NodeInfo from a node that previously signed", "from", evt.From)
 		}
 
 		// Respond to NodeInfo requests with our own NodeInfo

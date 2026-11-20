@@ -60,8 +60,11 @@ type BridgeConfig struct {
 
 	// SignaturePolicy controls how received packets are authenticated. The zero
 	// value is COMPATIBLE, the firmware wire default: unsigned packets are
-	// accepted, malformed or invalid signatures are dropped. Outbound packets are
-	// signed whenever PrivateKeyForNode supplies a key for the sending identity.
+	// accepted, malformed or invalid signatures are dropped. BALANCED also refuses
+	// unsigned identity changes from nodes known to sign, and STRICT drops most
+	// unsigned packets. When PrivateKeyForNode supplies a key, outbound packets are
+	// signed under every policy, choosing which packets the way firmware's
+	// BALANCED does.
 	SignaturePolicy pb.Config_SecurityConfig_PacketSignaturePolicy
 
 	// Licensed marks the bridge's identities as licensed (amateur radio)
@@ -480,8 +483,6 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 				b.db.SetChannel(from, ch)
 			}
 			b.base.emitEvent(&event.NodeInfoUpdated{Event: evt, User: user})
-		} else {
-			b.base.log.Debug("ignoring unsigned NodeInfo from a node that previously signed", "from", evt.From)
 		}
 
 		// Auto-respond to NodeInfo WantResponse on behalf of managed nodes

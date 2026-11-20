@@ -9,7 +9,6 @@ import (
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"github.com/kabili207/meshtastic-go/device/event"
 	"github.com/kabili207/meshtastic-go/transport"
-	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -40,13 +39,15 @@ func newIdentity(t *testing.T, seed byte) testIdentity {
 	return testIdentity{priv: priv, pub: pub, id: id}
 }
 
-func signedData(t *testing.T, ident testIdentity, packetID uint32, portnum pb.PortNum, payload []byte) *pb.Data {
+func signedData(t *testing.T, ident testIdentity, packetID uint32, to core.NodeID, portnum pb.PortNum, payload []byte) *pb.Data {
 	t.Helper()
-	sig, err := crypto.SignPacketData(ident.priv, ident.id.Uint32(), packetID, portnum, payload)
+	data := &pb.Data{Portnum: portnum, Payload: payload}
+	sig, err := crypto.SignPacketData(ident.priv, ident.id.Uint32(), packetID, to.Uint32(), data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &pb.Data{Portnum: portnum, Payload: payload, XeddsaSignature: sig}
+	data.XeddsaSignature = sig
+	return data
 }
 
 func decodedPacket(from core.NodeID, to core.NodeID, id uint32, data *pb.Data) transport.NetworkPacket {
@@ -99,13 +100,41 @@ func TestSignOutboundBroadcast(t *testing.T) {
 	if len(data.XeddsaSignature) != crypto.XEdDSASignatureSize {
 		t.Fatalf("broadcast was not signed: signature is %d bytes", len(data.XeddsaSignature))
 	}
-	if !crypto.VerifyPacketData(self.pub, sent.From, sent.Id, data.Portnum, data.Payload, data.XeddsaSignature) {
+	if !crypto.VerifyPacketData(self.pub, sent.From, sent.Id, sent.To, data, data.XeddsaSignature) {
 		t.Error("signature does not verify under the node's own key")
 	}
 }
 
-func TestSignOutboundUnicastOnlyWhenLicensed(t *testing.T) {
-	t.Run("unlicensed unicast is unsigned", func(t *testing.T) {
+// Mirrors firmware's perhapsEncode matrix (test_packet_signing B7, B13, B21-B24).
+func TestSignableOutbound(t *testing.T) {
+	const peer = core.NodeID(0xAA)
+	tests := []struct {
+		portnum  pb.PortNum
+		to       core.NodeID
+		licensed bool
+		want     bool
+	}{
+		{pb.PortNum_TEXT_MESSAGE_APP, core.BroadcastNodeID, false, true},
+		{pb.PortNum_TEXT_MESSAGE_APP, peer, false, false},
+		{pb.PortNum_TELEMETRY_APP, peer, false, false},
+		{pb.PortNum_NODEINFO_APP, peer, false, true},
+		{pb.PortNum_POSITION_APP, peer, false, true},
+		{pb.PortNum_ROUTING_APP, peer, false, false},
+		{pb.PortNum_TRACEROUTE_APP, core.BroadcastNodeID, false, false},
+		{pb.PortNum_TRACEROUTE_APP, peer, true, false},
+		{pb.PortNum_TEXT_MESSAGE_APP, peer, true, true},
+		{pb.PortNum_ROUTING_APP, peer, true, false},
+		{pb.PortNum_ROUTING_APP, core.BroadcastNodeID, true, true},
+	}
+	for _, tt := range tests {
+		if got := signableOutbound(tt.portnum, tt.to, tt.licensed); got != tt.want {
+			t.Errorf("signableOutbound(%v, %v, licensed=%v) = %v, want %v", tt.portnum, tt.to, tt.licensed, got, tt.want)
+		}
+	}
+}
+
+func TestSignOutboundUnicast(t *testing.T) {
+	t.Run("unlicensed text DM is unsigned", func(t *testing.T) {
 		mt := newMockTransport()
 		var events []any
 		n, _ := signingNode(t, mt, 0, &events)
@@ -117,7 +146,7 @@ func TestSignOutboundUnicastOnlyWhenLicensed(t *testing.T) {
 		}
 	})
 
-	t.Run("licensed unicast is signed", func(t *testing.T) {
+	t.Run("licensed text DM is signed", func(t *testing.T) {
 		mt := newMockTransport()
 		self := newIdentity(t, 0x11)
 		n := newTestNode(t, mt, func(c *Config) {
@@ -129,6 +158,23 @@ func TestSignOutboundUnicastOnlyWhenLicensed(t *testing.T) {
 		}
 		if _, data := decryptSent(t, mt); len(data.XeddsaSignature) != crypto.XEdDSASignatureSize {
 			t.Error("licensed unicast was not signed")
+		}
+	})
+
+	// A NodeInfo reply carries the key peers will use, so it is signed though unicast.
+	t.Run("NodeInfo reply is signed", func(t *testing.T) {
+		mt := newMockTransport()
+		var events []any
+		n, self := signingNode(t, mt, 0, &events)
+		req, _ := proto.Marshal(&pb.User{LongName: "Asker"})
+		inject(n, mt, decodedPacket(0xAA, n.cfg.NodeID, 40, &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: req, WantResponse: true}))
+
+		sent, data := decryptSent(t, mt)
+		if data.Portnum != pb.PortNum_NODEINFO_APP || sent.To != 0xAA {
+			t.Fatalf("last sent %v to %v, want a NodeInfo reply to !000000aa", data.Portnum, core.NodeID(sent.To))
+		}
+		if !crypto.VerifyPacketData(self.pub, sent.From, sent.Id, sent.To, data, data.XeddsaSignature) {
+			t.Error("unicast NodeInfo reply was not signed")
 		}
 	})
 }
@@ -178,7 +224,7 @@ func TestReceiveSignedFromKnownKey(t *testing.T) {
 		info.User = &pb.User{PublicKey: peer.pub}
 	})
 
-	data := signedData(t, peer, 50, pb.PortNum_TEXT_MESSAGE_APP, []byte("verified"))
+	data := signedData(t, peer, 50, core.BroadcastNodeID, pb.PortNum_TEXT_MESSAGE_APP, []byte("verified"))
 	inject(n, mt, decodedPacket(peer.id, core.BroadcastNodeID, 50, data))
 
 	msgs := textEvents(events)
@@ -202,7 +248,7 @@ func TestReceiveDropsBadSignature(t *testing.T) {
 		info.User = &pb.User{PublicKey: peer.pub}
 	})
 
-	data := signedData(t, peer, 51, pb.PortNum_TEXT_MESSAGE_APP, []byte("tampered"))
+	data := signedData(t, peer, 51, core.BroadcastNodeID, pb.PortNum_TEXT_MESSAGE_APP, []byte("tampered"))
 	data.Payload = []byte("tamperee")
 	inject(n, mt, decodedPacket(peer.id, core.BroadcastNodeID, 51, data))
 
@@ -233,7 +279,7 @@ func TestReceiveFirstContactBootstrap(t *testing.T) {
 	peer := newIdentity(t, 0x33)
 
 	userBytes, _ := proto.Marshal(&pb.User{LongName: "Newcomer", PublicKey: peer.pub})
-	data := signedData(t, peer, 60, pb.PortNum_NODEINFO_APP, userBytes)
+	data := signedData(t, peer, 60, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, userBytes)
 	inject(n, mt, decodedPacket(peer.id, core.BroadcastNodeID, 60, data))
 
 	info := n.NodeDB().Get(peer.id.Uint32())
@@ -257,11 +303,12 @@ func TestReceiveFirstContactRejectsMismatchedID(t *testing.T) {
 	claimed := peer.id ^ 1
 
 	userBytes, _ := proto.Marshal(&pb.User{PublicKey: peer.pub})
-	sig, err := crypto.SignPacketData(peer.priv, claimed.Uint32(), 61, pb.PortNum_NODEINFO_APP, userBytes)
+	data := &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes}
+	sig, err := crypto.SignPacketData(peer.priv, claimed.Uint32(), 61, core.BroadcastNodeID.Uint32(), data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes, XeddsaSignature: sig}
+	data.XeddsaSignature = sig
 	inject(n, mt, decodedPacket(claimed, core.BroadcastNodeID, 61, data))
 
 	if n.NodeDB().Get(claimed.Uint32()) != nil {
@@ -299,114 +346,167 @@ func TestReceiveCompatibleAcceptsUnsigned(t *testing.T) {
 	}
 }
 
-func TestReceiveBalanced(t *testing.T) {
-	newBalanced := func(t *testing.T) (*Node, *mockTransport, *[]any, testIdentity) {
+// Only STRICT drops a packet for being unsigned (test_packet_signing A4, A6, A10).
+func TestReceiveBalancedAcceptsUnsigned(t *testing.T) {
+	for _, to := range []core.NodeID{core.BroadcastNodeID, 0} {
 		mt := newMockTransport()
 		var events []any
 		n, _ := signingNode(t, mt, pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_BALANCED, &events)
+		if to == 0 {
+			to = n.cfg.NodeID
+		}
 		signer := newIdentity(t, 0x44)
 		n.NodeDB().Update(signer.id.Uint32(), func(info *pb.NodeInfo) {
 			info.User = &pb.User{PublicKey: signer.pub}
 			info.HasXeddsaSigned = true
 		})
-		return n, mt, &events, signer
-	}
-
-	t.Run("unsigned broadcast from a known signer is dropped", func(t *testing.T) {
-		n, mt, events, signer := newBalanced(t)
-		data := &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP, Payload: []byte("downgrade")}
-		inject(n, mt, decodedPacket(signer.id, core.BroadcastNodeID, 80, data))
-		if len(textEvents(*events)) != 0 {
-			t.Error("downgrade was accepted")
+		data := &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP, Payload: []byte("unsigned")}
+		inject(n, mt, decodedPacket(signer.id, to, 80, data))
+		if len(textEvents(events)) != 1 {
+			t.Errorf("to %v: unsigned packet from a known signer was dropped", to)
 		}
-	})
-
-	t.Run("unsigned unicast from a known signer is accepted when unlicensed", func(t *testing.T) {
-		n, mt, events, signer := newBalanced(t)
-		data := &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP, Payload: []byte("dm")}
-		inject(n, mt, decodedPacket(signer.id, n.cfg.NodeID, 81, data))
-		if len(textEvents(*events)) != 1 {
-			t.Error("unsigned unicast from a signer was dropped without a licensed rule")
-		}
-	})
-
-	t.Run("unsigned broadcast from an unknown node is accepted", func(t *testing.T) {
-		n, mt, events, _ := newBalanced(t)
-		data := &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP, Payload: []byte("stranger")}
-		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 82, data))
-		if len(textEvents(*events)) != 1 {
-			t.Error("unsigned packet from an unknown node was dropped")
-		}
-	})
-
-	t.Run("oversized unsigned broadcast from a signer is accepted", func(t *testing.T) {
-		n, mt, events, signer := newBalanced(t)
-		// A signer could not have fit a signature on this, so unsigned is not a downgrade.
-		data := &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP, Payload: make([]byte, 200)}
-		inject(n, mt, decodedPacket(signer.id, core.BroadcastNodeID, 83, data))
-		if len(textEvents(*events)) != 1 {
-			t.Error("an unsignable broadcast was treated as a downgrade")
-		}
-	})
-}
-
-// Unknown-field padding inside a typed payload must not let a forger inflate an
-// unsigned broadcast past the signable budget.
-func TestCanonicalSignableSizeStripsPadding(t *testing.T) {
-	position, _ := proto.Marshal(&pb.Position{LatitudeI: proto.Int32(1), LongitudeI: proto.Int32(2)})
-	clean := &pb.Data{Portnum: pb.PortNum_POSITION_APP, Payload: position}
-
-	// Field 999 with 150 bytes of junk: valid protobuf, unknown to Position.
-	padding := protowire.AppendTag(nil, 999, protowire.BytesType)
-	padding = protowire.AppendBytes(padding, make([]byte, 150))
-	padded := &pb.Data{Portnum: pb.PortNum_POSITION_APP, Payload: append(append([]byte{}, position...), padding...)}
-
-	if got, want := canonicalSignableSize(padded), canonicalSignableSize(clean); got != want {
-		t.Errorf("padded size %d, want canonical %d", got, want)
-	}
-	if proto.Size(padded) <= proto.Size(clean) {
-		t.Fatal("test setup: padding did not grow the raw size")
 	}
 }
 
-func TestPinIdentity(t *testing.T) {
+// STRICT exempts what cannot or need not be signed (test_packet_signing A13, A24,
+// A25, A27).
+func TestReceiveStrictExemptions(t *testing.T) {
+	mt := newMockTransport()
+	var events []any
+	n, _ := signingNode(t, mt, pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT, &events)
+
+	tests := []struct {
+		portnum pb.PortNum
+		pki     bool
+	}{
+		{pb.PortNum_ROUTING_APP, false},
+		{pb.PortNum_TRACEROUTE_APP, false},
+		{pb.PortNum_KEY_VERIFICATION_APP, false},
+		{pb.PortNum_TEXT_MESSAGE_APP, true},
+	}
+	for _, tt := range tests {
+		pkt := &pb.MeshPacket{Id: 1, From: 0xAA, To: n.cfg.NodeID.Uint32()}
+		if _, ok := n.base.checkSignaturePolicy(pkt, &pb.Data{Portnum: tt.portnum}, tt.pki); !ok {
+			t.Errorf("%v (pki=%v): STRICT dropped an exempt unsigned packet", tt.portnum, tt.pki)
+		}
+	}
+}
+
+// Every hop rewrites a traceroute, so a signature on one is ignored rather than
+// verified (test_packet_signing A26).
+func TestReceiveTracerouteSignatureIgnored(t *testing.T) {
+	mt := newMockTransport()
+	var events []any
+	n, _ := signingNode(t, mt, pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_STRICT, &events)
+	peer := newIdentity(t, 0x22)
+	n.NodeDB().Update(peer.id.Uint32(), func(info *pb.NodeInfo) { info.User = &pb.User{PublicKey: peer.pub} })
+
+	data := signedData(t, peer, 55, n.cfg.NodeID, pb.PortNum_TRACEROUTE_APP, []byte{0x0a, 0x04, 1, 2, 3, 4})
+	data.Payload = []byte{0x0a, 0x04, 9, 9, 9, 9} // rewritten by a relay
+	pkt := &pb.MeshPacket{Id: 55, From: peer.id.Uint32(), To: n.cfg.NodeID.Uint32()}
+	signed, ok := n.base.checkSignaturePolicy(pkt, data, false)
+	if !ok || signed {
+		t.Errorf("checkSignaturePolicy = signed %v, accept %v; want unsigned and accepted", signed, ok)
+	}
+}
+
+// A NodeInfo signed by the held key must also carry that key (test_packet_signing
+// A21, A23).
+func TestReceiveSignedNodeInfoMustCarrySignerKey(t *testing.T) {
 	mt := newMockTransport()
 	var events []any
 	n, _ := signingNode(t, mt, 0, &events)
+	peer := newIdentity(t, 0x22)
+	other := newIdentity(t, 0x77)
+	n.NodeDB().Update(peer.id.Uint32(), func(info *pb.NodeInfo) {
+		info.User = &pb.User{LongName: "Peer", PublicKey: peer.pub}
+	})
+
+	swapped, _ := proto.Marshal(&pb.User{LongName: "Swapped", PublicKey: other.pub})
+	// Checked directly too: on a bridge the verifying key can come from
+	// PublicKeyForNode with nothing in the NodeDB for pinIdentity to compare.
+	pkt := &pb.MeshPacket{Id: 56, From: peer.id.Uint32(), To: core.BroadcastNodeID.Uint32()}
+	if _, ok := n.base.checkSignaturePolicy(pkt, signedData(t, peer, 56, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, swapped), false); ok {
+		t.Error("checkSignaturePolicy accepted a signed NodeInfo advertising another key")
+	}
+	inject(n, mt, decodedPacket(peer.id, core.BroadcastNodeID, 56, signedData(t, peer, 56, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, swapped)))
+	if info := n.NodeDB().Get(peer.id.Uint32()); info.User.LongName != "Peer" || string(info.User.PublicKey) != string(peer.pub) {
+		t.Error("a signed NodeInfo advertising another key was applied")
+	}
+
+	consistent, _ := proto.Marshal(&pb.User{LongName: "Renamed", PublicKey: peer.pub})
+	inject(n, mt, decodedPacket(peer.id, core.BroadcastNodeID, 57, signedData(t, peer, 57, core.BroadcastNodeID, pb.PortNum_NODEINFO_APP, consistent)))
+	if info := n.NodeDB().Get(peer.id.Uint32()); info.User.LongName != "Renamed" {
+		t.Error("a consistent signed NodeInfo was not applied")
+	}
+}
+
+// Firmware's NodeDB::updateUser rules (test_packet_signing N1-N13 and
+// test_nodedb_identity_hygiene).
+func TestPinIdentity(t *testing.T) {
 	held := newIdentity(t, 0x55)
 	planted := newIdentity(t, 0x66)
-
-	t.Run("unsigned NodeInfo cannot replace a held key", func(t *testing.T) {
-		n.NodeDB().Update(0xAA, func(info *pb.NodeInfo) { info.User = &pb.User{PublicKey: held.pub} })
-		userBytes, _ := proto.Marshal(&pb.User{LongName: "Renamed", PublicKey: planted.pub})
-		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 90, &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes}))
-
-		info := n.NodeDB().Get(0xAA)
-		if string(info.User.PublicKey) != string(held.pub) {
-			t.Error("an unsigned NodeInfo replaced the held key")
-		}
-		if info.User.LongName != "Renamed" {
-			t.Error("the non-key fields of the NodeInfo were not applied")
-		}
-	})
-
-	t.Run("unsigned NodeInfo cannot erase a held key", func(t *testing.T) {
-		userBytes, _ := proto.Marshal(&pb.User{LongName: "Keyless"})
-		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 91, &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes}))
-		if info := n.NodeDB().Get(0xAA); string(info.User.PublicKey) != string(held.pub) {
-			t.Error("an unsigned NodeInfo without a key erased the held key")
-		}
-	})
-
-	t.Run("known signer sending unsigned is ignored", func(t *testing.T) {
-		n.NodeDB().Update(0xBB, func(info *pb.NodeInfo) {
-			info.User = &pb.User{LongName: "Signer", PublicKey: held.pub}
-			info.HasXeddsaSigned = true
+	nodeInfo := func(u *pb.User) *pb.Data {
+		b, _ := proto.Marshal(u)
+		return &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: b}
+	}
+	setup := func(t *testing.T, policy pb.Config_SecurityConfig_PacketSignaturePolicy, signer bool) (*Node, *mockTransport, testIdentity) {
+		mt := newMockTransport()
+		var events []any
+		n, self := signingNode(t, mt, policy, &events)
+		n.NodeDB().Update(0xAA, func(info *pb.NodeInfo) {
+			info.User = &pb.User{LongName: "Original", PublicKey: held.pub}
+			info.HasXeddsaSigned = signer
 		})
-		userBytes, _ := proto.Marshal(&pb.User{LongName: "Impostor", PublicKey: held.pub})
-		inject(n, mt, decodedPacket(0xBB, core.BroadcastNodeID, 92, &pb.Data{Portnum: pb.PortNum_NODEINFO_APP, Payload: userBytes}))
-		if info := n.NodeDB().Get(0xBB); info.User.LongName != "Signer" {
-			t.Error("an unsigned NodeInfo rewrote a known signer's identity")
+		return n, mt, self
+	}
+	longName := func(n *Node) string { return n.NodeDB().Get(0xAA).User.LongName }
+
+	t.Run("a different key drops the whole NodeInfo", func(t *testing.T) {
+		n, mt, _ := setup(t, 0, false)
+		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 90, nodeInfo(&pb.User{LongName: "Renamed", PublicKey: planted.pub})))
+		if info := n.NodeDB().Get(0xAA); info.User.LongName != "Original" || string(info.User.PublicKey) != string(held.pub) {
+			t.Error("a NodeInfo with a conflicting key was applied")
+		}
+	})
+
+	t.Run("a keyless NodeInfo is dropped once a key is held", func(t *testing.T) {
+		n, mt, _ := setup(t, 0, false)
+		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 91, nodeInfo(&pb.User{LongName: "Keyless"})))
+		if longName(n) != "Original" {
+			t.Error("a keyless NodeInfo was applied over a held key")
+		}
+	})
+
+	t.Run("the matching key is applied", func(t *testing.T) {
+		n, mt, _ := setup(t, 0, false)
+		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 92, nodeInfo(&pb.User{LongName: "Renamed", PublicKey: held.pub})))
+		if longName(n) != "Renamed" {
+			t.Error("a NodeInfo carrying the held key was refused")
+		}
+	})
+
+	t.Run("COMPATIBLE accepts unsigned updates from a signer", func(t *testing.T) {
+		n, mt, _ := setup(t, pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_COMPATIBLE, true)
+		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 93, nodeInfo(&pb.User{LongName: "Renamed", PublicKey: held.pub})))
+		if longName(n) != "Renamed" {
+			t.Error("COMPATIBLE refused an unsigned update from a known signer")
+		}
+	})
+
+	t.Run("BALANCED refuses unsigned updates from a signer", func(t *testing.T) {
+		n, mt, _ := setup(t, pb.Config_SecurityConfig_PACKET_SIGNATURE_POLICY_BALANCED, true)
+		inject(n, mt, decodedPacket(0xAA, core.BroadcastNodeID, 94, nodeInfo(&pb.User{LongName: "Impostor", PublicKey: held.pub})))
+		if longName(n) != "Original" {
+			t.Error("BALANCED let an unsigned NodeInfo rewrite a known signer's identity")
+		}
+	})
+
+	t.Run("a NodeInfo advertising our own key is refused", func(t *testing.T) {
+		n, mt, self := setup(t, 0, false)
+		inject(n, mt, decodedPacket(0xBB, core.BroadcastNodeID, 95, nodeInfo(&pb.User{LongName: "Clone", PublicKey: self.pub})))
+		if n.NodeDB().Get(0xBB) != nil {
+			t.Error("a NodeInfo carrying our own public key was stored")
 		}
 	})
 }

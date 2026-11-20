@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 )
 
@@ -252,82 +254,126 @@ func TestSignXEdDSARejectsWrongLengthKey(t *testing.T) {
 	}
 }
 
-// Cross-checked against firmware's buildSigningBuffer (CryptoEngine.cpp) driving the
-// same XEdDSA implementation. Every Meshtastic target is little-endian, which is what
-// firmware's raw memcpy of each uint32 assumes.
-func TestSignPacketDataMatchesFirmware(t *testing.T) {
-	const (
-		from     = uint32(0xA1B2C3D4)
-		packetID = uint32(0x0F1E2D3C)
-		portnum  = pb.PortNum_TEXT_MESSAGE_APP
-	)
-	payload := []byte("hello mesh")
-	priv := mustHex(t, "000a0d101316191c1f2225282b2e3134373a3d404346494c4f5255585b5e6164")
-	random := mustHex(t, "05162738495a6b7c8d9eafc0d1e2f30415263748596a7b8c9daebfd0e1f20314")
-	wantBuffer := mustHex(t, "d4c3b2a13c2d1e0f0100000068656c6c6f206d657368")
-	wantSignature := mustHex(t, "0cad19fb28954a5b71d469ad897f5b475beae75fc0a5d12f3117f0c5d75788207d0d2911fb270343045365251faaf0c842781380df5186f979f2990f98527c0d")
-
-	if got := packetSigningBuffer(from, packetID, portnum, payload); !bytes.Equal(got, wantBuffer) {
-		t.Errorf("packetSigningBuffer = %x, want %x", got, wantBuffer)
+// These buffers come from compiling firmware v2.8.2's buildSigningBuffer
+// (CryptoEngine.cpp) against its generated nanopb types and dumping the output. The
+// XEdDSA primitive over a buffer is cross-checked separately above.
+func TestPacketSigningBufferMatchesFirmware(t *testing.T) {
+	tests := []struct {
+		name         string
+		from, id, to uint32
+		data         *pb.Data
+		want         string
+	}{
+		{
+			name: "plain broadcast",
+			from: 0xA1B2C3D4, id: 0x0F1E2D3C, to: 0xFFFFFFFF,
+			data: &pb.Data{Portnum: pb.PortNum_TEXT_MESSAGE_APP, Payload: []byte("hello mesh")},
+			want: "01d4c3b2a13c2d1e0fffffffff01000000000000000000000000000000000000000068656c6c6f206d657368",
+		},
+		{
+			name: "every covered field set",
+			from: 0xA1B2C3D4, id: 0x0F1E2D3C, to: 0x12345678,
+			data: &pb.Data{
+				Portnum:      pb.PortNum_NODEINFO_APP,
+				Payload:      []byte("\x0a\x09!a1b2c3d4"),
+				WantResponse: true,
+				RequestId:    0x11223344,
+				ReplyId:      0x55667788,
+				Emoji:        0x1F600,
+				Bitfield:     proto.Uint32(7),
+			},
+			want: "01d4c3b2a13c2d1e0f7856341204000000443322118877665500f6010007000000030a09216131623263336434",
+		},
+		{
+			name: "empty payload, bitfield present but zero",
+			from: 1, id: 2, to: 3,
+			data: &pb.Data{Portnum: pb.PortNum_POSITION_APP, Bitfield: proto.Uint32(0)},
+			want: "01010000000200000003000000030000000000000000000000000000000000000002",
+		},
 	}
-
-	got, err := signXEdDSA(priv, packetSigningBuffer(from, packetID, portnum, payload), random)
-	if err != nil {
-		t.Fatalf("signXEdDSA: %v", err)
-	}
-	if !bytes.Equal(got, wantSignature) {
-		t.Errorf("signature = %x, want %x", got, wantSignature)
-	}
-
-	pub, err := PublicKeyFromPrivate(priv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !VerifyPacketData(pub, from, packetID, portnum, payload, wantSignature) {
-		t.Error("VerifyPacketData rejected a signature the firmware produced")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := packetSigningBuffer(tt.from, tt.id, tt.to, tt.data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := mustHex(t, tt.want); !bytes.Equal(got, want) {
+				t.Errorf("packetSigningBuffer =\n%x, want\n%x", got, want)
+			}
+		})
 	}
 }
 
-// The metadata is signed so a packet cannot be replayed under a different identity,
-// id, or port. Each of those changes on its own must invalidate the signature.
+// Firmware's buffer holds at most DATA_PAYLOAD_LEN payload bytes, the most a Data can
+// carry off the wire.
+func TestPacketSigningBufferPayloadLimit(t *testing.T) {
+	max := int(pb.Constants_DATA_PAYLOAD_LEN)
+	buf, err := packetSigningBuffer(1, 2, 3, &pb.Data{Payload: make([]byte, max)})
+	if err != nil || len(buf) != 267 {
+		t.Errorf("at the limit: len %d, err %v; want 267, nil", len(buf), err)
+	}
+	if _, err := packetSigningBuffer(1, 2, 3, &pb.Data{Payload: make([]byte, max+1)}); err == nil {
+		t.Error("expected an error one byte over the limit")
+	}
+}
+
+// Every covered field must invalidate the signature when changed on its own.
 func TestVerifyPacketDataRejectsAlteredMetadata(t *testing.T) {
 	const (
 		from     = uint32(0x1234ABCD)
 		packetID = uint32(0x55667788)
-		portnum  = pb.PortNum_TEXT_MESSAGE_APP
+		to       = uint32(0xFFFFFFFF)
 	)
-	payload := []byte("original payload")
+	signed := func() *pb.Data {
+		return &pb.Data{
+			Portnum:   pb.PortNum_TEXT_MESSAGE_APP,
+			Payload:   []byte("original payload"),
+			RequestId: 10,
+			ReplyId:   20,
+			Emoji:     30,
+			Bitfield:  proto.Uint32(1),
+		}
+	}
 	priv := mustHex(t, xeddsaVectors[0].curvePrivate)
 	pub, err := PublicKeyFromPrivate(priv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := SignPacketData(priv, from, packetID, portnum, payload)
+	sig, err := SignPacketData(priv, from, packetID, to, signed())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !VerifyPacketData(pub, from, packetID, portnum, payload, sig) {
+	if !VerifyPacketData(pub, from, packetID, to, signed(), sig) {
 		t.Fatal("the unmodified packet did not verify")
 	}
 
 	tests := []struct {
-		name     string
-		from     uint32
-		packetID uint32
-		portnum  pb.PortNum
-		payload  []byte
+		name               string
+		from, packetID, to uint32
+		alter              func(*pb.Data)
 	}{
-		{"reattributed to another sender", from + 1, packetID, portnum, payload},
-		{"replayed under a different id", from, packetID + 1, portnum, payload},
-		{"redirected to another port", from, packetID, pb.PortNum_PRIVATE_APP, payload},
-		{"payload altered", from, packetID, portnum, []byte("modified payload")},
-		{"payload truncated", from, packetID, portnum, payload[:len(payload)-1]},
-		{"payload emptied", from, packetID, portnum, nil},
+		{"reattributed to another sender", from + 1, packetID, to, nil},
+		{"replayed under a different id", from, packetID + 1, to, nil},
+		{"broadcast re-addressed as a DM", from, packetID, 0x12345678, nil},
+		{"redirected to another port", from, packetID, to, func(d *pb.Data) { d.Portnum = pb.PortNum_PRIVATE_APP }},
+		{"payload altered", from, packetID, to, func(d *pb.Data) { d.Payload = []byte("modified payload") }},
+		{"payload truncated", from, packetID, to, func(d *pb.Data) { d.Payload = d.Payload[:len(d.Payload)-1] }},
+		{"payload emptied", from, packetID, to, func(d *pb.Data) { d.Payload = nil }},
+		{"request_id changed", from, packetID, to, func(d *pb.Data) { d.RequestId++ }},
+		{"reply_id changed", from, packetID, to, func(d *pb.Data) { d.ReplyId++ }},
+		{"emoji changed", from, packetID, to, func(d *pb.Data) { d.Emoji++ }},
+		{"bitfield changed", from, packetID, to, func(d *pb.Data) { d.Bitfield = proto.Uint32(0) }},
+		{"bitfield stripped", from, packetID, to, func(d *pb.Data) { d.Bitfield = nil }},
+		{"want_response set", from, packetID, to, func(d *pb.Data) { d.WantResponse = true }},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if VerifyPacketData(pub, tt.from, tt.packetID, tt.portnum, tt.payload, sig) {
+			d := signed()
+			if tt.alter != nil {
+				tt.alter(d)
+			}
+			if VerifyPacketData(pub, tt.from, tt.packetID, tt.to, d, sig) {
 				t.Error("accepted a packet whose signed metadata had changed")
 			}
 		})
@@ -341,11 +387,12 @@ func TestSignPacketDataEmptyPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := SignPacketData(priv, 1, 2, pb.PortNum_NODEINFO_APP, nil)
+	data := &pb.Data{Portnum: pb.PortNum_NODEINFO_APP}
+	sig, err := SignPacketData(priv, 1, 2, 3, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !VerifyPacketData(pub, 1, 2, pb.PortNum_NODEINFO_APP, nil, sig) {
+	if !VerifyPacketData(pub, 1, 2, 3, data, sig) {
 		t.Error("an empty payload did not round-trip")
 	}
 }
