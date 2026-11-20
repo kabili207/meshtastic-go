@@ -359,6 +359,14 @@ func (n *Node) broadcastPosition(ctx context.Context) error {
 	}, "")
 }
 
+// requestIsForUs reports whether a want_response request is ours to answer.
+// Like firmware's MeshModule, we answer broadcasts and requests addressed to us,
+// never requests we overhear between other nodes.
+func (n *Node) requestIsForUs(pkt *pb.MeshPacket) bool {
+	to := core.NodeID(pkt.To)
+	return to.IsBroadcast() || to == n.cfg.NodeID
+}
+
 // respondNodeInfo sends our NodeInfo as a unicast response to a WantResponse request.
 func (n *Node) respondNodeInfo(to uint32, requestID uint32) {
 	data := n.buildNodeInfoData(requestID)
@@ -521,7 +529,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		}
 
 		// Respond to NodeInfo requests with our own NodeInfo
-		if data.WantResponse && n.base.throttle.canRespond(core.NodeID(from), pb.PortNum_NODEINFO_APP) {
+		if data.WantResponse && n.requestIsForUs(pkt.Packet) && n.base.throttle.canRespond(core.NodeID(from), pb.PortNum_NODEINFO_APP) {
 			n.respondNodeInfo(from, pkt.Packet.Id)
 		}
 
@@ -534,8 +542,9 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		n.db.Update(from, func(info *pb.NodeInfo) { info.Position = pos })
 		n.base.emitEvent(&event.PositionUpdated{Event: evt, Position: pos})
 
-		// Respond to Position requests with our position
-		if data.WantResponse && n.base.throttle.canRespond(core.NodeID(from), pb.PortNum_POSITION_APP) {
+		// Respond to Position requests with our position. Firmware sends one reply
+		// per window across all requesters, so the throttle is keyed on us.
+		if data.WantResponse && n.requestIsForUs(pkt.Packet) && n.base.throttle.canRespond(n.cfg.NodeID, pb.PortNum_POSITION_APP) {
 			n.respondPosition(from, pkt.Packet.Id)
 		}
 

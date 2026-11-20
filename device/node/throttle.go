@@ -14,6 +14,7 @@ const (
 	telemetryCooldown  = 3 * time.Minute
 	neighborCooldown   = 3 * time.Minute
 	tracerouteCooldown = 30 * time.Second
+	positionCooldown   = 3 * time.Minute
 )
 
 type throttleKey struct {
@@ -66,6 +67,8 @@ func cooldownForPortnum(portnum pb.PortNum) time.Duration {
 		return neighborCooldown
 	case pb.PortNum_TRACEROUTE_APP:
 		return tracerouteCooldown
+	case pb.PortNum_POSITION_APP:
+		return positionCooldown
 	default:
 		return 0
 	}

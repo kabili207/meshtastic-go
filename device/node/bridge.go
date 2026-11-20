@@ -630,24 +630,19 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 	}
 }
 
-// respondNodeInfoForManaged answers a NodeInfo WantResponse request. The bridge
-// always replies as itself. If the request was a direct message to a specific
-// managed node, that node also replies. Each reply is throttled independently.
+// respondNodeInfoForManaged answers a NodeInfo WantResponse request the way
+// firmware's MeshModule would if each identity were its own node: only the
+// addressed identity replies, and only the bridge itself answers a broadcast.
+// Requests we overhear between other nodes get no reply.
 func (b *BridgeNode) respondNodeInfoForManaged(evt event.Event) {
-	requester := evt.From.Uint32()
-	requestID := evt.PacketID
-
-	// Respond as the bridge itself.
-	if b.base.throttle.canRespond(b.cfg.NodeID, pb.PortNum_NODEINFO_APP) {
-		b.sendNodeInfoResponse(b.cfg.NodeID, requester, requestID)
+	responder := evt.To
+	if responder.IsBroadcast() {
+		responder = b.cfg.NodeID
+	} else if responder != b.cfg.NodeID && !b.cfg.IsManagedNode(responder) {
+		return
 	}
-
-	// Respond as the addressed managed node on a direct message.
-	to := evt.To
-	if !to.IsBroadcast() && to != b.cfg.NodeID && b.cfg.IsManagedNode(to) {
-		if b.base.throttle.canRespond(to, pb.PortNum_NODEINFO_APP) {
-			b.sendNodeInfoResponse(to, requester, requestID)
-		}
+	if b.base.throttle.canRespond(responder, pb.PortNum_NODEINFO_APP) {
+		b.sendNodeInfoResponse(responder, evt.From.Uint32(), evt.PacketID)
 	}
 }
 
