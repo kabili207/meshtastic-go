@@ -4,42 +4,58 @@ Go library for interfacing with Meshtastic mesh networks.
 
 > **Under heavy development.** Consider these contracts written with a half-eaten crayon; they *will* change.
 
-## Module Structure
+```bash
+go get github.com/kabili207/meshtastic-go
+```
 
-This repository contains two Go modules:
+Tracks Meshtastic firmware and protobufs 2.8. To reach 2.6 and 2.7 nodes over UDP, set `udp.Config.MulticastIP` to `udp.LegacyMulticastIP`.
 
-### Core (`github.com/kabili207/meshtastic-go/core`)
+## Packages
 
-Core types and utilities with minimal dependencies:
-- `generated/` - Generated protobuf message definitions
-- `crypto/` - Encryption (AES-CTR, Curve25519 PKI)
-- `dedupe/` - Packet deduplication
-- `lora/` - LoRa signal quality utilities
-- `node_id.go` - NodeID type
+Everything lives in a single module, `github.com/kabili207/meshtastic-go`.
 
-### Transport (`github.com/kabili207/meshtastic-go/transport`)
+### `core/`
 
-Transport implementations for connecting to devices and mesh networks:
+Protocol types and logic with no I/O:
 
-**Client Transports** (connect to existing nodes):
-- `serial/` - Serial port connections
-- `tcp/` - TCP connections
-- `client/` - Base client transport with handler registry
+- `proto/`: generated protobuf message definitions
+- `crypto/`: channel encryption (AES-CTR), PKI (Curve25519 + AES-CCM), and XEdDSA packet signing
+- `dedupe/`: packet deduplication
+- `lora/`: region and modem preset tables, position precision, signal quality, and link budget math
+- `traceroute/`: parsing route discovery results
+- The package root has `NodeID`, channel definitions and the channel registry, positions, geofences, and roles
 
-**Raw Transports** (act as virtual nodes):
-- `mqtt/` - MQTT transport for mesh communication
-- `udp/` - UDP multicast (firmware 2.6+)
+### `transport/`
 
-**Utilities**:
-- `stream/` - Meshtastic stream protocol
-- `emulated/` - Virtual radio for testing
+Client transports connect to a real device through its client API:
+
+- `serial/`: serial port connections
+- `tcp/`: TCP connections
+- `client/`: shared client transport with a handler registry
+- `stream/`: the Meshtastic stream framing protocol used by serial and TCP
+
+Raw transports carry mesh packets directly, so the Go side can act as a node of its own:
+
+- `mqtt/`: MQTT
+- `udp/`: UDP multicast
+- `raw/`: the raw transport interface, plus `MultiTransport` for running several at once
+
+### `device/`
+
+The pieces for running a virtual node over a raw transport:
+
+- `node/`: `Node` (a single virtual node) and `BridgeNode` (one transport serving many node identities)
+- `nodedb/`: tracks known nodes from incoming packets
+- `event/`: typed events for decoded packets
+- `broadcast/`: periodic NodeInfo and position broadcasts
+- `clientapi/`: a client API server, so the Meshtastic apps can connect to a virtual node
 
 ## Usage Examples
 
-### Core only (protobufs + crypto)
+### Decrypting a channel packet
+
 ```go
 import (
-    pb "github.com/kabili207/meshtastic-go/core/proto"
     "github.com/kabili207/meshtastic-go/core/crypto"
 )
 
@@ -48,9 +64,13 @@ data, err := crypto.TryDecode(packet, key)
 ```
 
 ### Serial client transport
+
 ```go
 import (
     "context"
+
+    "google.golang.org/protobuf/proto"
+
     pb "github.com/kabili207/meshtastic-go/core/proto"
     "github.com/kabili207/meshtastic-go/transport/serial"
 )
@@ -64,9 +84,11 @@ client.Handle(&pb.MeshPacket{}, func(msg proto.Message) error {
 ```
 
 ### MQTT raw transport
+
 ```go
 import (
     "context"
+
     "github.com/kabili207/meshtastic-go/transport"
     "github.com/kabili207/meshtastic-go/transport/mqtt"
 )
@@ -82,11 +104,50 @@ t.SetPacketHandler(func(pkt transport.NetworkPacket) {
 t.Start(context.Background())
 ```
 
-## Regenerating Protobufs
+### Virtual node
 
-```bash
-cd core
-go generate ./...
+```go
+import (
+    "context"
+
+    "github.com/kabili207/meshtastic-go/core/crypto"
+    pb "github.com/kabili207/meshtastic-go/core/proto"
+    "github.com/kabili207/meshtastic-go/device/event"
+    "github.com/kabili207/meshtastic-go/device/node"
+    "github.com/kabili207/meshtastic-go/transport/udp"
+)
+
+pub, priv, _ := crypto.GenerateKeyPair()
+key, _ := crypto.ParseKey("AQ==")
+
+n, err := node.New(node.Config{
+    Transport:  udp.New(udp.Config{}),
+    PublicKey:  pub, // the node ID is derived from this
+    PrivateKey: priv,
+    LongName:   "Go Node",
+    ShortName:  "GO",
+    Channels: &pb.ChannelSet{
+        Settings: []*pb.ChannelSettings{{Name: "LongFast", Psk: key}},
+    },
+    TCPListenAddr: ":4403", // lets the Meshtastic apps connect
+})
+if err != nil {
+    return err
+}
+n.OnEvent(func(evt any) {
+    if msg, ok := evt.(*event.TextMessage); ok {
+        // msg.From, msg.Message, msg.Channel, ...
+    }
+})
+return n.Run(context.Background())
 ```
 
-This fetches the latest protobuf definitions from the Meshtastic protobufs repository and regenerates the Go code.
+## Regenerating Protobufs
+
+Requires `protoc` and `protoc-gen-go` on your `PATH`.
+
+```bash
+go generate ./core
+```
+
+This checks out the newest tagged release in the `protobufs` submodule, then regenerates `core/proto`.
