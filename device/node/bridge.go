@@ -76,7 +76,8 @@ type BridgeConfig struct {
 	// Licensed marks the bridge's identities as licensed (amateur radio)
 	// operators. Licensed traffic stays plaintext, so firmware signs unicasts as
 	// well as broadcasts and expects the same of peers. Applies to every managed
-	// node; firmware has no per-identity notion of this either.
+	// node; firmware has no per-identity notion of this either. It is advertised in
+	// NodeInfo, and firmware drops NodeInfo whose licensed bit differs from its own.
 	Licensed bool
 
 	// NodeInfoForNode returns the long name, short name, and public key for a managed node.
@@ -782,13 +783,14 @@ func (b *BridgeNode) buildUserFor(asNode core.NodeID) *pb.User {
 	}
 
 	user := &pb.User{
-		Id:        asNode.String(),
-		LongName:  longName,
-		ShortName: shortName,
-		HwModel:   b.cfg.HwModel,
-		Macaddr:   asNode.MacBytes(),
-		PublicKey: pubKey,
-		Role:      pb.Config_DeviceConfig_CLIENT_MUTE,
+		Id:         asNode.String(),
+		LongName:   longName,
+		ShortName:  shortName,
+		HwModel:    b.cfg.HwModel,
+		Macaddr:    asNode.MacBytes(),
+		PublicKey:  pubKey,
+		Role:       pb.Config_DeviceConfig_CLIENT_MUTE,
+		IsLicensed: b.cfg.Licensed,
 	}
 	if asNode == b.cfg.NodeID {
 		user.Role = pb.Config_DeviceConfig_CLIENT_BASE

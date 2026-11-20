@@ -980,3 +980,16 @@ handshake:
 		t.Errorf("region preset map was empty: %v", presets)
 	}
 }
+
+func TestNodeInfoAdvertisesLicensed(t *testing.T) {
+	for _, licensed := range []bool{false, true} {
+		n := newTestNode(t, newMockTransport(), func(cfg *Config) { cfg.Licensed = licensed })
+		user := &pb.User{}
+		if err := proto.Unmarshal(n.buildNodeInfoData(0).Payload, user); err != nil {
+			t.Fatalf("unmarshal NodeInfo: %v", err)
+		}
+		if user.IsLicensed != licensed {
+			t.Errorf("Licensed=%v: NodeInfo IsLicensed = %v", licensed, user.IsLicensed)
+		}
+	}
+}

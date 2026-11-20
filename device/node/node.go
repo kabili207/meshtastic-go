@@ -84,7 +84,8 @@ type Config struct {
 
 	// Licensed marks this node as a licensed (amateur radio) operator. Licensed
 	// traffic stays plaintext, so firmware signs unicasts as well as broadcasts
-	// and expects the same of peers.
+	// and expects the same of peers. It is advertised in NodeInfo, and firmware
+	// drops NodeInfo whose licensed bit differs from its own.
 	Licensed bool
 
 	// DefaultHopLimit for outbound packets. If zero, defaults to 3.
@@ -377,11 +378,12 @@ func (n *Node) OnEvent(fn event.Handler) {
 // and WantResponse replies. Pass requestID=0 for unsolicited broadcasts.
 func (n *Node) buildNodeInfoData(requestID uint32) *pb.Data {
 	user := &pb.User{
-		Id:        n.cfg.NodeID.String(),
-		LongName:  n.cfg.LongName,
-		ShortName: n.cfg.ShortName,
-		HwModel:   n.cfg.HwModel,
-		PublicKey: n.cfg.PublicKey,
+		Id:         n.cfg.NodeID.String(),
+		LongName:   n.cfg.LongName,
+		ShortName:  n.cfg.ShortName,
+		HwModel:    n.cfg.HwModel,
+		PublicKey:  n.cfg.PublicKey,
+		IsLicensed: n.cfg.Licensed,
 	}
 	userBytes, err := proto.Marshal(user)
 	if err != nil {

@@ -51,6 +51,27 @@ func TestBridgeNodeInfoIncludesOwnPublicKey(t *testing.T) {
 	}
 }
 
+func TestBridgeNodeInfoAdvertisesLicensed(t *testing.T) {
+	for _, licensed := range []bool{false, true} {
+		b := newTestBridge(t, newMockTransport(), func(cfg *BridgeConfig) {
+			cfg.Licensed = licensed
+			cfg.NodeInfoForNode = func(core.NodeID) (string, string, []byte, bool) {
+				return "Ghost", "GH", nil, true
+			}
+			cfg.IsManagedNode = func(core.NodeID) bool { return true }
+		})
+		for _, id := range []core.NodeID{b.cfg.NodeID, 0x0BADBEEF} {
+			user := b.buildUserFor(id)
+			if user == nil {
+				t.Fatalf("buildUserFor(%s) returned nil", id)
+			}
+			if user.IsLicensed != licensed {
+				t.Errorf("Licensed=%v: buildUserFor(%s).IsLicensed = %v", licensed, id, user.IsLicensed)
+			}
+		}
+	}
+}
+
 // A decoded packet carries a channel index, not a hash, so the transport's channel
 // name must win and the registered key must be attached.
 func TestBridgeDecodedPacketUsesTransportChannel(t *testing.T) {
