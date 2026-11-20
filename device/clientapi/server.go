@@ -67,9 +67,12 @@ type NodeInfoProvider interface {
 // PacketIDFunc returns the next packet ID for outgoing packets.
 type PacketIDFunc func() uint32
 
-// OutboundPacketHandler is called when a client sends a mesh packet
-// via ToRadio that should be forwarded to the mesh.
-type OutboundPacketHandler func(ctx context.Context, packet *pb.MeshPacket)
+// OutboundPacketHandler is called when a client sends a mesh packet via ToRadio
+// that should be forwarded to the mesh. The packet always has an ID. It returns
+// Routing_NONE once sent, or the error firmware would report: the client then
+// gets that error as a nak for the packet, which is how apps mark a message
+// failed.
+type OutboundPacketHandler func(ctx context.Context, packet *pb.MeshPacket) pb.Routing_Error
 
 // Config configures a client API Server.
 type Config struct {
@@ -304,13 +307,40 @@ func (s *Server) readLoop(ctx context.Context, c *client) error {
 					continue
 				}
 			}
-			// Forward non-admin packets to the mesh
-			if s.cfg.OnOutboundPacket != nil {
-				s.cfg.OnOutboundPacket(ctx, payload.Packet)
+			if err := s.sendToMesh(ctx, c.conn, payload.Packet); err != nil {
+				return err
 			}
 		}
 	}
 }
+
+// sendToMesh forwards a packet a client sent, then reports the result the way
+// firmware's MeshService::sendToMesh does: a QueueStatus for the packet, and on
+// failure a nak addressed to us, as Router::abortSendAndNak sends.
+func (s *Server) sendToMesh(ctx context.Context, conn *stream.Conn, pkt *pb.MeshPacket) error {
+	if pkt.Id == 0 {
+		pkt.Id = s.cfg.NextPacketID()
+	}
+	reason := pb.Routing_NO_INTERFACE
+	if s.cfg.OnOutboundPacket != nil {
+		reason = s.cfg.OnOutboundPacket(ctx, pkt)
+	}
+	status := s.queueStatus(pkt.Id)
+	if reason != pb.Routing_NONE {
+		status.GetQueueStatus().Res = errnoUnknown
+	}
+	if err := conn.Write(status); err != nil {
+		return fmt.Errorf("writing QueueStatus: %w", err)
+	}
+	if reason == pb.Routing_NONE {
+		return nil
+	}
+	return conn.Write(s.routingToClient(pkt.Id, reason))
+}
+
+// errnoUnknown is firmware's ERRNO_UNKNOWN, the QueueStatus result for a send
+// that failed. Success is ERRNO_OK, zero.
+const errnoUnknown = 32
 
 // queueStatus reports a send queue that is never full: packets go straight to
 // the transport.
@@ -319,6 +349,23 @@ func (s *Server) queueStatus(packetID uint32) *pb.FromRadio {
 		Free:         subscriberBufferSize,
 		Maxlen:       subscriberBufferSize,
 		MeshPacketId: packetID,
+	}}}
+}
+
+// routingToClient builds a Routing result for a client's packet, from us to us,
+// as firmware delivers its own acks and naks to the phone.
+func (s *Server) routingToClient(requestID uint32, reason pb.Routing_Error) *pb.FromRadio {
+	payload, _ := proto.Marshal(&pb.Routing{Variant: &pb.Routing_ErrorReason{ErrorReason: reason}})
+	return &pb.FromRadio{PayloadVariant: &pb.FromRadio_Packet{Packet: &pb.MeshPacket{
+		Id:       s.cfg.NextPacketID(),
+		From:     s.cfg.NodeID.Uint32(),
+		To:       s.cfg.NodeID.Uint32(),
+		Priority: pb.MeshPacket_ACK,
+		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: &pb.Data{
+			Portnum:   pb.PortNum_ROUTING_APP,
+			Payload:   payload,
+			RequestId: requestID,
+		}},
 	}}}
 }
 

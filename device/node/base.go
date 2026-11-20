@@ -110,11 +110,13 @@ func (b *baseNode) sendPacketWith(ctx context.Context, packet *pb.MeshPacket, o 
 	return b.sendPacketOn(ctx, packet, ch, o.usePKI)
 }
 
-// sendPacketOn stamps a packet ID, applies defaults, signs and encrypts a
+// sendPacketOn stamps a packet ID unless it has one, applies defaults, signs and encrypts a
 // decoded payload (see encryptOutbound), and sends on that channel's transport
 // topic. requirePKI fails the send rather than falling back to the channel key.
 func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch core.ChannelDef, requirePKI bool) error {
-	packet.Id = b.packetIDs.next()
+	if packet.Id == 0 {
+		packet.Id = b.packetIDs.next()
+	}
 
 	b.applyPacketDefaults(packet)
 

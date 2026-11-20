@@ -5,6 +5,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -152,6 +153,10 @@ type Node struct {
 	scheduler *broadcast.Scheduler
 	api       *clientapi.Server
 
+	// channelDefs is the configured channel set, resolved. Clients name channels
+	// by their index in it.
+	channelDefs []*core.Channel
+
 	positionOffWarning sync.Once
 }
 
@@ -185,7 +190,8 @@ func New(cfg Config) (*Node, error) {
 			hopLimit:  cfg.DefaultHopLimit,
 			primary:   defs[0],
 		},
-		cfg: cfg,
+		cfg:         cfg,
+		channelDefs: defs,
 	}
 
 	// Seed event handlers from config
@@ -232,24 +238,68 @@ func New(cfg Config) (*Node, error) {
 		NodeInfoBroadcastSecs: uint32(cfg.BroadcastNodeInfoInterval.Seconds()),
 		Nodes:                 n.db,
 		NextPacketID:          n.base.packetIDs.next,
-		OnOutboundPacket: func(ctx context.Context, pkt *pb.MeshPacket) {
-			// A client names the channel by hash; resolve it exactly rather than
-			// through a name that may be shared.
-			var err error
-			if ch, ok := n.base.channels.Lookup(pkt.Channel); ok {
-				err = n.base.sendPacketOn(ctx, pkt, ch, pkt.PkiEncrypted)
-			} else {
-				err = n.base.sendPacket(ctx, pkt, "")
-			}
-			if err != nil {
-				n.base.log.Error("failed to send outbound packet", "error", err)
-			}
-		},
-		TCPListenAddr: cfg.TCPListenAddr,
-		Logger:        cfg.Logger,
+		OnOutboundPacket:      n.sendFromClient,
+		TCPListenAddr:         cfg.TCPListenAddr,
+		Logger:                cfg.Logger,
 	})
 
 	return n, nil
+}
+
+// sendFromClient sends a packet a connected app handed us, the way firmware's
+// MeshService::handleToRadio does: the app may not pick the sender or routing
+// hints, its channel is an index into our channel table, and a pki_encrypted
+// request means PKI or nothing.
+func (n *Node) sendFromClient(ctx context.Context, pkt *pb.MeshPacket) pb.Routing_Error {
+	pkt.From = n.cfg.NodeID.Uint32()
+	pkt.NextHop = 0
+	pkt.RelayNode = 0
+	if pkt.Channel >= uint32(len(n.channelDefs)) || n.channelDefs[pkt.Channel] == nil {
+		return pb.Routing_NO_CHANNEL
+	}
+	ch := n.channelDefs[pkt.Channel]
+	pkt.Channel = 0
+	err := n.base.sendPacketOn(ctx, pkt, ch, pkt.PkiEncrypted)
+	if err != nil {
+		n.base.log.Warn("failed to send packet from client", "to", core.NodeID(pkt.To), "error", err)
+	}
+	return routingErrorFor(err)
+}
+
+// routingErrorFor maps a send error to the Routing error firmware reports for it.
+func routingErrorFor(err error) pb.Routing_Error {
+	switch {
+	case err == nil:
+		return pb.Routing_NONE
+	case errors.Is(err, ErrNoPublicKey):
+		return pb.Routing_PKI_SEND_FAIL_PUBLIC_KEY
+	case errors.Is(err, ErrPKIUnavailable):
+		return pb.Routing_PKI_FAILED
+	case errors.Is(err, ErrPacketTooLarge):
+		return pb.Routing_TOO_LARGE
+	}
+	return pb.Routing_NO_INTERFACE
+}
+
+// deliverToClients hands a decoded packet to connected apps, as firmware's
+// RoutingModule does: only broadcasts and packets for us, decoded, with the
+// channel as an index into the table the handshake sent.
+func (n *Node) deliverToClients(pkt *pb.MeshPacket, data *pb.Data, ch core.ChannelDef, isPKI bool) {
+	to := core.NodeID(pkt.To)
+	if !to.IsBroadcast() && to != n.cfg.NodeID {
+		return
+	}
+	out := proto.Clone(pkt).(*pb.MeshPacket)
+	out.PayloadVariant = &pb.MeshPacket_Decoded{Decoded: data}
+	out.PkiEncrypted = isPKI
+	out.Channel = 0
+	for i, def := range n.channelDefs {
+		if !isPKI && def != nil && core.SameChannel(def, ch) {
+			out.Channel = uint32(i)
+			break
+		}
+	}
+	n.api.DispatchToClients(&pb.FromRadio{PayloadVariant: &pb.FromRadio_Packet{Packet: out}})
 }
 
 // loraConfigFor is the LoRa config reported to clients: the channel set's own,
@@ -511,21 +561,14 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		return
 	}
 
-	// 3. Forward raw packet to all connected clients (before decryption)
-	n.api.DispatchToClients(&pb.FromRadio{
-		PayloadVariant: &pb.FromRadio_Packet{
-			Packet: pkt.Packet,
-		},
-	})
-
-	// 4. If already decoded, process directly
+	// 3. If already decoded, process directly
 	if decoded := pkt.Packet.GetDecoded(); decoded != nil {
 		ch, channelName := n.base.decodedChannel(pkt)
 		n.processDecoded(pkt, decoded, ch, channelName, false)
 		return
 	}
 
-	// 5. Try PKI decryption (channel==0, unicast to this node)
+	// 4. Try PKI decryption (channel==0, unicast to this node)
 	if n.shouldTryPKI(pkt.Packet) {
 		data, err := n.tryDecryptPKI(pkt.Packet)
 		if err == nil && data != nil {
@@ -535,7 +578,7 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		n.base.log.Debug("PKI decryption failed, falling back to PSK", "error", err)
 	}
 
-	// 6. Try PSK decryption with every registered channel matching the hash. The
+	// 5. Try PSK decryption with every registered channel matching the hash. The
 	// one-byte hash collides, so like firmware we try each and keep the first
 	// that yields a plausible Data; a wrong key that happens to decode reports
 	// UNKNOWN_APP.
@@ -591,6 +634,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 	}
 
 	from := pkt.Packet.From
+	n.deliverToClients(pkt.Packet, data, ch, isPKI)
 
 	// Firmware acks after the modules have run, and not at all when one of them
 	// already replied.
