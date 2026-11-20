@@ -649,7 +649,7 @@ func (b *BridgeNode) processDecoded(pkt transport.NetworkPacket, data *pb.Data, 
 		// The peer could not decrypt a PKI packet from this identity for lack of
 		// its key, so send it the identity's NodeInfo, which carries it.
 		if routing.GetErrorReason() == pb.Routing_PKI_UNKNOWN_PUBKEY && b.isOurs(evt.To) &&
-			b.base.throttle.canRespond(evt.To, pb.PortNum_NODEINFO_APP) {
+			b.base.throttle.canSendNodeInfoUrgently(evt.To) {
 			b.sendNodeInfoResponse(evt.To, from, 0)
 		}
 
@@ -670,7 +670,7 @@ func (b *BridgeNode) respondNodeInfoForManaged(evt event.Event) bool {
 	} else if !b.isOurs(responder) {
 		return false
 	}
-	return b.base.throttle.canRespond(responder, pb.PortNum_NODEINFO_APP) &&
+	return b.base.throttle.canReplyNodeInfo(responder, evt.From) &&
 		b.sendNodeInfoResponse(responder, evt.From.Uint32(), evt.PacketID)
 }
 

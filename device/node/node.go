@@ -672,7 +672,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		}
 
 		// Respond to NodeInfo requests with our own NodeInfo
-		if data.WantResponse && n.requestIsForUs(pkt.Packet) && n.base.throttle.canRespond(core.NodeID(from), pb.PortNum_NODEINFO_APP) {
+		if data.WantResponse && n.requestIsForUs(pkt.Packet) && n.base.throttle.canReplyNodeInfo(n.cfg.NodeID, core.NodeID(from)) {
 			replied = n.respondNodeInfo(from, pkt.Packet.Id)
 		}
 
@@ -791,7 +791,7 @@ func (n *Node) processDecoded(pkt transport.NetworkPacket, data *pb.Data, ch cor
 		// The peer could not decrypt our PKI packet for lack of our key, so send
 		// it our NodeInfo, which carries it.
 		if routing.GetErrorReason() == pb.Routing_PKI_UNKNOWN_PUBKEY && evt.To == n.cfg.NodeID &&
-			n.hasPKI() && n.base.throttle.canRespond(evt.From, pb.PortNum_NODEINFO_APP) {
+			n.hasPKI() && n.base.throttle.canSendNodeInfoUrgently(n.cfg.NodeID) {
 			n.respondNodeInfo(from, 0)
 		}
 

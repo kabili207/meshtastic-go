@@ -137,6 +137,9 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 	if err := b.base.transport.SendPacket(channelName, pkt); err != nil {
 		return packetID, err
 	}
+	if s.portnum == pb.PortNum_NODEINFO_APP {
+		b.base.throttle.noteNodeInfoSent(s.from)
+	}
 	return packetID, nil
 }
 

@@ -124,6 +124,7 @@ func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch cor
 		decoded.Bitfield = proto.Uint32(b.outboundBitfield(decoded.GetBitfield(), decoded.WantResponse))
 	}
 
+	isNodeInfo := packet.GetDecoded().GetPortnum() == pb.PortNum_NODEINFO_APP
 	if err := b.encryptOutbound(packet, ch, requirePKI); err != nil {
 		return err
 	}
@@ -140,7 +141,13 @@ func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch cor
 	}
 	b.lastSend = time.Now()
 
-	return b.transport.SendPacket(ch.GetName(), packet)
+	if err := b.transport.SendPacket(ch.GetName(), packet); err != nil {
+		return err
+	}
+	if isNodeInfo {
+		b.throttle.noteNodeInfoSent(core.NodeID(packet.From))
+	}
+	return nil
 }
 
 // channelForDestination picks the channel for a packet with none specified. A
