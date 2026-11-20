@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -85,7 +86,7 @@ func (b *baseNode) sendPacket(ctx context.Context, packet *pb.MeshPacket, channe
 	} else {
 		ch = b.channelForDestination(core.NodeID(packet.To), packet.PkiEncrypted)
 	}
-	return b.sendPacketOn(ctx, packet, ch)
+	return b.sendPacketOn(ctx, packet, ch, false)
 }
 
 // sendPacketWith sends honoring the channel chosen by send options: an exact
@@ -94,21 +95,26 @@ func (b *baseNode) sendPacketWith(ctx context.Context, packet *pb.MeshPacket, o 
 	if decoded := packet.GetDecoded(); decoded != nil {
 		markAutomation(decoded, o)
 	}
-	if o.channelDef != nil {
-		return b.sendPacketOn(ctx, packet, o.channelDef)
+	ch := o.channelDef
+	if ch == nil {
+		if o.channel != "" {
+			resolved, err := b.channels.ResolveByName(o.channel)
+			if err != nil {
+				return fmt.Errorf("channel %q: %w", o.channel, err)
+			}
+			ch = resolved
+		} else {
+			ch = b.channelForDestination(core.NodeID(packet.To), false)
+		}
 	}
-	return b.sendPacket(ctx, packet, o.channel)
+	return b.sendPacketOn(ctx, packet, ch, o.usePKI)
 }
 
-// sendPacketOn stamps a packet ID, applies defaults, signs and PSK-encrypts a
-// decoded payload with the channel's key, and sends on that channel's transport
-// topic. A PKI packet is already encrypted; the channel then only names the topic.
-func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch core.ChannelDef) error {
+// sendPacketOn stamps a packet ID, applies defaults, signs and encrypts a
+// decoded payload (see encryptOutbound), and sends on that channel's transport
+// topic. requirePKI fails the send rather than falling back to the channel key.
+func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch core.ChannelDef, requirePKI bool) error {
 	packet.Id = b.packetIDs.next()
-
-	if !packet.PkiEncrypted && packet.Channel == 0 {
-		packet.Channel = ch.GetHash()
-	}
 
 	b.applyPacketDefaults(packet)
 
@@ -120,15 +126,8 @@ func (b *baseNode) sendPacketOn(_ context.Context, packet *pb.MeshPacket, ch cor
 		}
 	}
 
-	if decoded := packet.GetDecoded(); decoded != nil {
-		b.signOutbound(decoded, packet.From, packet.Id, core.NodeID(packet.To), packet.PkiEncrypted)
-	}
-
-	// PSK-encrypt decoded payloads so other nodes can receive them.
-	if decoded := packet.GetDecoded(); decoded != nil && !packet.PkiEncrypted {
-		if err := encryptDecoded(packet, decoded, ch.GetKeyBytes()); err != nil {
-			return fmt.Errorf("encrypting packet: %w", err)
-		}
+	if err := b.encryptOutbound(packet, ch, requirePKI); err != nil {
+		return err
 	}
 
 	b.sendMu.Lock()
@@ -181,21 +180,97 @@ func (b *baseNode) applyPacketDefaults(pkt *pb.MeshPacket) {
 	}
 }
 
-// encryptDecoded marshals a Decoded payload and replaces it with an Encrypted
-// variant using AES-CTR (PSK encryption).
-func encryptDecoded(pkt *pb.MeshPacket, data *pb.Data, key []byte) error {
+var (
+	// ErrNoPublicKey reports a unicast that firmware would PKI-encrypt to a node
+	// whose key we do not hold. Firmware refuses these (PKI_SEND_FAIL_PUBLIC_KEY)
+	// rather than falling back to the channel key, since receivers reject a
+	// channel-encrypted DM.
+	ErrNoPublicKey = errors.New("no public key for destination")
+	// ErrPKIUnavailable reports a send that required PKI for a packet that cannot
+	// use it: a broadcast, a port firmware never PKI-encrypts, or a sender without
+	// a private key.
+	ErrPKIUnavailable = errors.New("packet cannot be sent with PKI")
+	// ErrPacketTooLarge reports a packet that does not fit a LoRa frame once
+	// encrypted.
+	ErrPacketTooLarge = errors.New("packet too large to send")
+)
+
+// encryptOutbound signs and encrypts the decoded payload of a packet we
+// originate. It uses PKI exactly when firmware's wouldEncryptWithPKC would, and
+// the channel's key otherwise. A packet that is not decoded is left alone.
+func (b *baseNode) encryptOutbound(pkt *pb.MeshPacket, ch core.ChannelDef, requirePKI bool) error {
+	data := pkt.GetDecoded()
+	if data == nil {
+		return nil
+	}
+	from, to := core.NodeID(pkt.From), core.NodeID(pkt.To)
+	var priv []byte
+	if b.privateKeyFor != nil && usesPKI(data.Portnum, to, b.licensed) {
+		priv = b.privateKeyFor(from)
+	}
+	pki := priv != nil
+	if requirePKI && !pki {
+		return fmt.Errorf("%w: %v to %s", ErrPKIUnavailable, data.Portnum, to)
+	}
+
+	b.signOutbound(data, pkt.From, pkt.Id, to, pki)
 	plaintext, err := proto.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("marshalling data: %w", err)
 	}
-	encrypted, err := crypto.XOR(plaintext, key, pkt.Id, pkt.From)
+
+	if !pki {
+		if pkt.Channel == 0 {
+			pkt.Channel = ch.GetHash()
+		}
+		encrypted, err := crypto.XOR(plaintext, ch.GetKeyBytes(), pkt.Id, pkt.From)
+		if err != nil {
+			return fmt.Errorf("XOR encrypt: %w", err)
+		}
+		pkt.PayloadVariant = &pb.MeshPacket_Encrypted{Encrypted: encrypted}
+		return nil
+	}
+
+	if len(plaintext)+crypto.MeshtasticPKCOverhead+core.LoraHeaderLength > core.MaxLoraPayload {
+		return fmt.Errorf("%w: %d bytes with PKI overhead", ErrPacketTooLarge, len(plaintext)+crypto.MeshtasticPKCOverhead)
+	}
+	pub := b.lookupPublicKey(to)
+	if pub == nil {
+		return fmt.Errorf("%w %s", ErrNoPublicKey, to)
+	}
+	encrypted, err := crypto.EncryptCurve25519(plaintext, priv, pub, pkt.Id, pkt.From)
 	if err != nil {
-		return fmt.Errorf("XOR encrypt: %w", err)
+		return fmt.Errorf("PKI encrypt: %w", err)
 	}
-	pkt.PayloadVariant = &pb.MeshPacket_Encrypted{
-		Encrypted: encrypted,
-	}
+	pkt.Channel = 0
+	pkt.PkiEncrypted = true
+	pkt.PayloadVariant = &pb.MeshPacket_Encrypted{Encrypted: encrypted}
 	return nil
+}
+
+// isLegacyDM reports whether a channel-decrypted packet is a text DM to one of
+// our identities. Firmware has rejected these since 2.7.14, so a sender cannot
+// skip PKI. Without a private key for the recipient we have no PKI, and like a
+// firmware build without it we accept them. Licensed nodes never use PKI.
+func (b *baseNode) isLegacyDM(pkt *pb.MeshPacket, data *pb.Data) bool {
+	to := core.NodeID(pkt.To)
+	return data.Portnum == pb.PortNum_TEXT_MESSAGE_APP && !b.licensed && !to.IsBroadcast() &&
+		b.privateKeyFor != nil && b.privateKeyFor(to) != nil
+}
+
+// usesPKI reports whether firmware would PKI-encrypt a packet it originates,
+// given a private key to do it with: every unicast except traceroute, NodeInfo,
+// routing, and position. Licensed nodes never use PKI, since amateur radio rules
+// forbid encryption.
+func usesPKI(portnum pb.PortNum, to core.NodeID, licensed bool) bool {
+	if licensed || to.IsBroadcast() {
+		return false
+	}
+	switch portnum {
+	case pb.PortNum_TRACEROUTE_APP, pb.PortNum_NODEINFO_APP, pb.PortNum_ROUTING_APP, pb.PortNum_POSITION_APP:
+		return false
+	}
+	return true
 }
 
 // decodedChannel resolves the channel of an already-decoded packet. Its channel

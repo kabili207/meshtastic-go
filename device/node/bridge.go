@@ -352,6 +352,10 @@ func (b *BridgeNode) handleIncomingPacket(pkt transport.NetworkPacket) {
 		if err != nil || data.Portnum == pb.PortNum_UNKNOWN_APP {
 			continue
 		}
+		if b.base.isLegacyDM(pkt.Packet, data) {
+			b.base.log.Warn("rejecting channel-encrypted DM", "from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
+			return
+		}
 		b.processDecoded(pkt, data, ch, ch.GetName(), false, 0)
 		return
 	}
@@ -757,30 +761,21 @@ func (b *BridgeNode) SendTextAs(ctx context.Context, from, to core.NodeID, messa
 	})
 }
 
-// SendDataAs sends a data payload from a managed node. If usePKI is true and
-// keys are available, the packet is PKI-encrypted. Otherwise falls back to PSK.
-func (b *BridgeNode) SendDataAs(ctx context.Context, from, to core.NodeID, data *pb.Data, usePKI bool) error {
+// SendDataAs sends a data payload from a managed node. Unicasts are
+// PKI-encrypted whenever firmware would (see usesPKI), and fail with
+// ErrNoPublicKey when the recipient's key is unknown. requirePKI also fails a
+// send that would otherwise go out on a channel key.
+func (b *BridgeNode) SendDataAs(ctx context.Context, from, to core.NodeID, data *pb.Data, requirePKI bool) error {
 	if !b.cfg.IsManagedNode(from) {
 		return fmt.Errorf("node %s is not managed by this bridge", from)
 	}
-
-	if usePKI {
-		err := b.sendPKIPacketAs(ctx, from, to, data)
-		if err == nil {
-			return nil
-		}
-		b.base.log.Debug("PKI send failed, falling back to PSK", "from", from, "to", to, "error", err)
-	}
-
 	pkt := &pb.MeshPacket{
-		From: from.Uint32(),
-		To:   to.Uint32(),
-		PayloadVariant: &pb.MeshPacket_Decoded{
-			Decoded: data,
-		},
+		From:           from.Uint32(),
+		To:             to.Uint32(),
+		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
 	}
 	b.adjustHopForRelay(pkt, from)
-	return b.base.sendPacket(ctx, pkt, "")
+	return b.base.sendPacketWith(ctx, pkt, sendOptions{usePKI: requirePKI})
 }
 
 // SendAckAs sends a routing ACK from a managed node.
@@ -841,60 +836,6 @@ func (b *BridgeNode) SendNodeInfoAs(ctx context.Context, from, to core.NodeID, o
 		wantResponse: o.wantResponse,
 		automation:   o.automation,
 	})
-}
-
-// sendPKIPacketAs sends a PKI-encrypted packet from a managed node.
-func (b *BridgeNode) sendPKIPacketAs(ctx context.Context, from, to core.NodeID, data *pb.Data) error {
-	if b.cfg.PrivateKeyForNode == nil {
-		return fmt.Errorf("PrivateKeyForNode not configured")
-	}
-	privKey := b.cfg.PrivateKeyForNode(from)
-	if privKey == nil {
-		return fmt.Errorf("no private key for %s", from)
-	}
-
-	if b.cfg.PublicKeyForNode == nil {
-		return fmt.Errorf("PublicKeyForNode not configured")
-	}
-	pubKey := b.cfg.PublicKeyForNode(to)
-	if pubKey == nil {
-		return fmt.Errorf("no public key for recipient %s", to)
-	}
-
-	plaintext, err := proto.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("marshalling data: %w", err)
-	}
-
-	packetID := b.base.packetIDs.next()
-	encrypted, err := crypto.EncryptCurve25519(plaintext, privKey, pubKey, packetID, from.Uint32())
-	if err != nil {
-		return fmt.Errorf("PKI encryption: %w", err)
-	}
-
-	pkt := &pb.MeshPacket{
-		Id:           packetID,
-		From:         from.Uint32(),
-		To:           to.Uint32(),
-		Channel:      0,
-		PkiEncrypted: true,
-		PayloadVariant: &pb.MeshPacket_Encrypted{
-			Encrypted: encrypted,
-		},
-	}
-	b.base.applyPacketDefaults(pkt)
-	b.adjustHopForRelay(pkt, from)
-
-	b.base.sendMu.Lock()
-	defer b.base.sendMu.Unlock()
-	if !b.base.lastSend.IsZero() {
-		if elapsed := time.Since(b.base.lastSend); elapsed < sendDelay {
-			time.Sleep(sendDelay - elapsed)
-		}
-	}
-	b.base.lastSend = time.Now()
-
-	return b.base.transport.SendPacket(b.base.primary.GetName(), pkt)
 }
 
 // adjustHopForRelay adds +1 to HopStart when the sending identity differs

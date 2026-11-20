@@ -25,23 +25,17 @@ type eventContext struct {
 	RxSnr         float32
 }
 
-// responseEncryption picks the encryption mode and channel for a reply based on
-// how the inbound packet arrived. PKI-decrypted packets ("PKI" channel) get a
-// PKI reply; everything else replies with PSK on the exact channel the request
-// came in on, so a name shared by several channels still gets the right key.
-func responseEncryption(evt eventContext) (EncryptionMode, core.ChannelDef, string) {
+// replyChannel sends a reply on the exact channel the request came in on, so a
+// name shared by several channels still gets the right key. A PKI request has no
+// channel; its reply goes out under PKI anyway wherever firmware would use it.
+func replyChannel(evt eventContext) SendOption {
+	if evt.Channel != nil {
+		return WithChannelDef(evt.Channel)
+	}
 	if evt.ChannelName == "PKI" {
-		return EncryptPKI, nil, ""
+		return WithChannel("")
 	}
-	return EncryptPSK, evt.Channel, evt.ChannelName
-}
-
-// channelOption selects the reply channel exactly when known, by name otherwise.
-func channelOption(ch core.ChannelDef, name string) SendOption {
-	if ch != nil {
-		return WithChannelDef(ch)
-	}
-	return WithChannel(name)
+	return WithChannel(evt.ChannelName)
 }
 
 // respondTelemetry answers a telemetry request addressed to a managed node,
@@ -59,11 +53,7 @@ func (b *BridgeNode) respondTelemetry(evt eventContext, tel *pb.Telemetry) {
 	}
 	b.base.log.Info("telemetry request received", "to", to, "from", from)
 
-	enc, ch, name := responseEncryption(evt)
-	opts := []SendOption{channelOption(ch, name), WithRequestID(evt.PacketID)}
-	if enc == EncryptPKI {
-		opts = append(opts, WithPKI())
-	}
+	opts := []SendOption{replyChannel(evt), WithRequestID(evt.PacketID)}
 
 	switch tel.Variant.(type) {
 	case *pb.Telemetry_HostMetrics:
@@ -104,11 +94,7 @@ func (b *BridgeNode) respondNeighborInfo(evt eventContext, ni *pb.NeighborInfo) 
 		neighborIDs = b.cfg.NeighborProvider(to)
 	}
 
-	enc, ch, name := responseEncryption(evt)
-	opts := []SendOption{channelOption(ch, name)}
-	if enc == EncryptPKI {
-		opts = append(opts, WithPKI())
-	}
+	opts := []SendOption{replyChannel(evt)}
 	if _, err := b.SendNeighborInfoResponseAs(context.Background(), to, from, neighborIDs, b.cfg.NeighborBroadcastInterval, evt.PacketID, opts...); err != nil {
 		b.base.log.Error("failed to send neighbor info response", "error", err)
 	}
@@ -152,7 +138,6 @@ func (b *BridgeNode) handleTracerouteRequest(evt eventContext, disco *pb.RouteDi
 
 	b.logRoute(disco, from, to)
 
-	enc, ch, name := responseEncryption(evt)
 	payload, err := proto.Marshal(disco)
 	if err != nil {
 		b.base.log.Error("failed to marshal traceroute response", "error", err)
@@ -162,10 +147,12 @@ func (b *BridgeNode) handleTracerouteRequest(evt eventContext, disco *pb.RouteDi
 		from: to, to: from,
 		portnum:    pb.PortNum_TRACEROUTE_APP,
 		payload:    payload,
-		enc:        enc,
-		channel:    name,
-		channelDef: ch,
+		enc:        EncryptAuto,
+		channelDef: evt.Channel,
 		requestID:  evt.PacketID,
+	}
+	if evt.ChannelName != "PKI" {
+		opts.channel = evt.ChannelName
 	}
 	if _, err := b.sendAs(context.Background(), opts); err != nil {
 		b.base.log.Error("failed to send traceroute response", "error", err)

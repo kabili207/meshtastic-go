@@ -228,7 +228,7 @@ func New(cfg Config) (*Node, error) {
 			// through a name that may be shared.
 			var err error
 			if ch, ok := n.base.channels.Lookup(pkt.Channel); ok {
-				err = n.base.sendPacketOn(ctx, pkt, ch)
+				err = n.base.sendPacketOn(ctx, pkt, ch, pkt.PkiEncrypted)
 			} else {
 				err = n.base.sendPacket(ctx, pkt, "")
 			}
@@ -465,6 +465,10 @@ func (n *Node) handleIncomingPacket(pkt transport.NetworkPacket) {
 		data, err := crypto.TryDecode(pkt.Packet, ch.GetKeyBytes())
 		if err != nil || data.Portnum == pb.PortNum_UNKNOWN_APP {
 			continue
+		}
+		if n.base.isLegacyDM(pkt.Packet, data) {
+			n.base.log.Warn("rejecting channel-encrypted DM", "from", core.NodeID(pkt.Packet.From), "packetID", pkt.Packet.Id)
+			return
 		}
 		n.processDecoded(pkt, data, ch, ch.GetName(), false)
 		return

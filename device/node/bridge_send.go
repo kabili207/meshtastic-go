@@ -8,7 +8,6 @@ import (
 
 	"github.com/iancoleman/strcase"
 	"github.com/kabili207/meshtastic-go/core"
-	"github.com/kabili207/meshtastic-go/core/crypto"
 	"github.com/kabili207/meshtastic-go/core/lora"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 	"google.golang.org/protobuf/proto"
@@ -21,10 +20,10 @@ const (
 	// EncryptNone sends the payload as cleartext on channel 0 (used for map
 	// reports and other public broadcasts).
 	EncryptNone EncryptionMode = iota
-	// EncryptPSK encrypts the payload with the channel's shared key.
-	EncryptPSK
-	// EncryptPKI encrypts the payload with Curve25519 between sender and
-	// recipient. Falls back to PSK if keys are unavailable.
+	// EncryptAuto uses PKI wherever firmware would and the channel's shared key
+	// otherwise. See usesPKI.
+	EncryptAuto
+	// EncryptPKI requires PKI, failing the send rather than using the channel key.
 	EncryptPKI
 )
 
@@ -120,51 +119,11 @@ func (b *BridgeNode) sendAs(ctx context.Context, s bridgeSend) (uint32, error) {
 	}
 	channelName := ch.GetName()
 
-	b.base.signOutbound(data, s.from.Uint32(), packetID, s.to, s.enc == EncryptPKI)
-
-	switch s.enc {
-	case EncryptNone:
-		pkt.Channel = 0
-		pkt.PayloadVariant = &pb.MeshPacket_Decoded{Decoded: data}
-
-	case EncryptPSK:
-		pkt.Channel = ch.GetHash()
-		raw, err := proto.Marshal(data)
-		if err != nil {
-			return 0, fmt.Errorf("marshalling data: %w", err)
-		}
-		enc, err := crypto.XOR(raw, ch.GetKeyBytes(), packetID, s.from.Uint32())
-		if err != nil {
-			return 0, fmt.Errorf("PSK encrypt: %w", err)
-		}
-		pkt.PayloadVariant = &pb.MeshPacket_Encrypted{Encrypted: enc}
-
-	case EncryptPKI:
-		if b.cfg.PrivateKeyForNode == nil || b.cfg.PublicKeyForNode == nil {
-			return 0, errors.New("PKI key callbacks not configured")
-		}
-		priv := b.cfg.PrivateKeyForNode(s.from)
-		if priv == nil {
-			return 0, fmt.Errorf("no private key for %s", s.from)
-		}
-		pub := b.cfg.PublicKeyForNode(s.to)
-		if pub == nil {
-			return 0, fmt.Errorf("no public key for %s", s.to)
-		}
-		raw, err := proto.Marshal(data)
-		if err != nil {
-			return 0, fmt.Errorf("marshalling data: %w", err)
-		}
-		enc, err := crypto.EncryptCurve25519(raw, priv, pub, packetID, s.from.Uint32())
-		if err != nil {
-			return 0, fmt.Errorf("PKI encrypt: %w", err)
-		}
-		pkt.Channel = 0
-		pkt.PkiEncrypted = true
-		pkt.PayloadVariant = &pb.MeshPacket_Encrypted{Encrypted: enc}
-
-	default:
-		return 0, errors.New("unknown encryption mode")
+	pkt.PayloadVariant = &pb.MeshPacket_Decoded{Decoded: data}
+	if s.enc == EncryptNone {
+		b.base.signOutbound(data, s.from.Uint32(), packetID, s.to, false)
+	} else if err := b.base.encryptOutbound(pkt, ch, s.enc == EncryptPKI); err != nil {
+		return 0, err
 	}
 
 	// Pace sends so radio hardware has time to switch between TX and RX.
@@ -200,13 +159,12 @@ func (b *BridgeNode) applyHopLimits(pkt *pb.MeshPacket, from core.NodeID) {
 	}
 }
 
-// encModeForOption resolves the encryption mode from send options: PKI if
-// requested, otherwise PSK.
-func encModeFor(usePKI bool) EncryptionMode {
-	if usePKI {
+// encModeFor resolves the encryption mode from send options.
+func encModeFor(requirePKI bool) EncryptionMode {
+	if requirePKI {
 		return EncryptPKI
 	}
-	return EncryptPSK
+	return EncryptAuto
 }
 
 // SendPositionAs broadcasts or unicasts a Position from a managed node and
@@ -375,7 +333,7 @@ func (b *BridgeNode) SendNackAs(ctx context.Context, from, to core.NodeID, packe
 		from: from, to: to,
 		portnum:   pb.PortNum_ROUTING_APP,
 		payload:   payload,
-		enc:       EncryptPSK,
+		enc:       EncryptAuto,
 		requestID: packetID,
 	})
 	return err
@@ -486,7 +444,7 @@ func (b *BridgeNode) SendNeighborInfoAs(ctx context.Context, from core.NodeID, n
 		from: from, to: core.BroadcastNodeIDNoLora,
 		portnum: pb.PortNum_NEIGHBORINFO_APP,
 		payload: payload,
-		enc:     EncryptPSK,
+		enc:     EncryptAuto,
 	})
 }
 

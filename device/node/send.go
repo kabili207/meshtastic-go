@@ -39,8 +39,9 @@ func WithWantAck() SendOption {
 	return func(o *sendOptions) { o.wantAck = true }
 }
 
-// WithPKI requests PKI (Curve25519) encryption instead of PSK channel encryption.
-// Falls back to PSK if the recipient's public key is not known.
+// WithPKI requires PKI (Curve25519) encryption, failing the send instead of
+// using the channel key. Unicasts already use PKI by default wherever firmware
+// would, so this only matters to callers who would rather not send at all.
 func WithPKI() SendOption {
 	return func(o *sendOptions) { o.usePKI = true }
 }
@@ -89,11 +90,6 @@ func (n *Node) SendText(ctx context.Context, to core.NodeID, message string, opt
 		Payload: []byte(message),
 		ReplyId: o.replyID,
 		Emoji:   o.emoji,
-	}
-
-	if o.usePKI {
-		markAutomation(data, o)
-		return n.SendData(ctx, to, data, true)
 	}
 
 	pkt := &pb.MeshPacket{

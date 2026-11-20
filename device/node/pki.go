@@ -3,12 +3,10 @@ package node
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/kabili207/meshtastic-go/core"
 	"github.com/kabili207/meshtastic-go/core/crypto"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
-	"google.golang.org/protobuf/proto"
 )
 
 // hasPKI returns true if this node has PKI keys configured.
@@ -56,70 +54,14 @@ func (n *Node) tryDecryptPKI(pkt *pb.MeshPacket) (*pb.Data, error) {
 	return crypto.TryDecodePKI(pkt, pubKey, n.cfg.PrivateKey)
 }
 
-// SendData sends a data payload to a recipient. If usePKI is true and PKI
-// keys are available for both sender and recipient, the packet is sent with
-// Curve25519 encryption. Otherwise it falls back to PSK channel encryption
-// on the primary channel.
-func (n *Node) SendData(ctx context.Context, to core.NodeID, data *pb.Data, usePKI bool) error {
-	if usePKI {
-		err := n.sendPKIPacket(ctx, to, data)
-		if err == nil {
-			return nil
-		}
-		n.base.log.Debug("PKI send failed, falling back to PSK", "to", to, "error", err)
-	}
-	return n.base.sendPacket(ctx, &pb.MeshPacket{
-		From: n.cfg.NodeID.Uint32(),
-		To:   to.Uint32(),
-		PayloadVariant: &pb.MeshPacket_Decoded{
-			Decoded: data,
-		},
-	}, "")
-}
-
-// sendPKIPacket sends a PKI-encrypted packet to a specific recipient using
-// this node's private key and the recipient's public key from the NodeDB.
-func (n *Node) sendPKIPacket(ctx context.Context, to core.NodeID, data *pb.Data) error {
-	if !n.hasPKI() {
-		return fmt.Errorf("PKI not configured")
-	}
-	pubKey := n.lookupPublicKey(to)
-	if pubKey == nil {
-		return fmt.Errorf("no public key for recipient %s", to)
-	}
-
-	plaintext, err := proto.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("marshalling data: %w", err)
-	}
-
-	packetID := n.base.packetIDs.next()
-	encrypted, err := crypto.EncryptCurve25519(plaintext, n.cfg.PrivateKey, pubKey, packetID, n.cfg.NodeID.Uint32())
-	if err != nil {
-		return fmt.Errorf("PKI encryption: %w", err)
-	}
-
-	pkt := &pb.MeshPacket{
-		Id:           packetID,
-		From:         n.cfg.NodeID.Uint32(),
-		To:           to.Uint32(),
-		Channel:      0,
-		PkiEncrypted: true,
-		PayloadVariant: &pb.MeshPacket_Encrypted{
-			Encrypted: encrypted,
-		},
-	}
-	n.base.applyPacketDefaults(pkt)
-
-	n.base.sendMu.Lock()
-	defer n.base.sendMu.Unlock()
-	if !n.base.lastSend.IsZero() {
-		if elapsed := time.Since(n.base.lastSend); elapsed < sendDelay {
-			time.Sleep(sendDelay - elapsed)
-		}
-	}
-	n.base.lastSend = time.Now()
-
-	// PKI packets use channel 0; send on primary channel's transport topic
-	return n.base.transport.SendPacket(n.base.primary.GetName(), pkt)
+// SendData sends a data payload to a recipient. Unicasts are PKI-encrypted
+// whenever firmware would (see usesPKI), and fail with ErrNoPublicKey when the
+// recipient's key is unknown. requirePKI also fails a send that would otherwise
+// go out on a channel key.
+func (n *Node) SendData(ctx context.Context, to core.NodeID, data *pb.Data, requirePKI bool) error {
+	return n.base.sendPacketWith(ctx, &pb.MeshPacket{
+		From:           n.cfg.NodeID.Uint32(),
+		To:             to.Uint32(),
+		PayloadVariant: &pb.MeshPacket_Decoded{Decoded: data},
+	}, sendOptions{usePKI: requirePKI})
 }

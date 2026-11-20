@@ -134,15 +134,22 @@ func TestSignableOutbound(t *testing.T) {
 }
 
 func TestSignOutboundUnicast(t *testing.T) {
-	t.Run("unlicensed text DM is unsigned", func(t *testing.T) {
+	t.Run("unlicensed text DM goes out under PKI, unsigned", func(t *testing.T) {
 		mt := newMockTransport()
 		var events []any
-		n, _ := signingNode(t, mt, 0, &events)
-		if err := n.SendText(context.Background(), 0xAA, "dm"); err != nil {
+		n, self := signingNode(t, mt, 0, &events)
+		peer := newIdentity(t, 0x22)
+		n.NodeDB().Update(peer.id.Uint32(), func(info *pb.NodeInfo) { info.User = &pb.User{PublicKey: peer.pub} })
+		if err := n.SendText(context.Background(), peer.id, "dm"); err != nil {
 			t.Fatal(err)
 		}
-		if _, data := decryptSent(t, mt); data.XeddsaSignature != nil {
-			t.Error("unlicensed unicast carried a signature")
+		sent := mt.lastSent().packet
+		data, err := crypto.TryDecodePKI(sent, self.pub, peer.priv)
+		if err != nil {
+			t.Fatalf("DM was not PKI-encrypted to the peer: %v", err)
+		}
+		if data.XeddsaSignature != nil {
+			t.Error("PKI unicast carried a signature")
 		}
 	})
 
