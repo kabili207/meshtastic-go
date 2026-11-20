@@ -48,14 +48,21 @@ func ParseKey(key string) ([]byte, error) {
 //
 // This means index 1 (AQ==) produces the unmodified DefaultKey.
 //
-// If the input is already 16+ bytes, it's returned unchanged.
-// If the input is empty, DefaultKey is returned.
+// Keys of 2-15 bytes are zero-padded to 16 and keys of 17-31 bytes to 32, so
+// a 24-byte key runs as AES-256 like firmware's rather than AES-192.
+// If the input is empty, DefaultKey is returned; a channel's empty PSK means
+// something else, which ChannelFromSettings handles.
 func ExpandShortPSK(input []byte) []byte {
 	if len(input) == 0 {
 		return DefaultKey
 	}
-	if len(input) >= 16 {
+	if len(input) == 16 || len(input) >= 32 {
 		return input
+	}
+	if len(input) > 16 {
+		padded := make([]byte, 32)
+		copy(padded, input)
+		return padded
 	}
 
 	// For 1-byte PSKs, derive from DefaultKey per firmware behavior

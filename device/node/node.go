@@ -166,9 +166,10 @@ func New(cfg Config) (*Node, error) {
 	logger := cfg.Logger.WithGroup("node").With("node", cfg.NodeID.String())
 
 	// Build channel registry from configured channels
+	defs := core.ChannelsFromSet(cfg.Channels)
 	channels := core.NewChannelRegistry()
-	for _, settings := range cfg.Channels.Settings {
-		if ch := core.ChannelFromSettings(settings); ch != nil {
+	for _, ch := range defs {
+		if ch != nil {
 			channels.Register(ch)
 		}
 	}
@@ -183,7 +184,7 @@ func New(cfg Config) (*Node, error) {
 			nodeID:    cfg.NodeID,
 			okToMQTT:  cfg.OkToMQTT,
 			hopLimit:  cfg.DefaultHopLimit,
-			primary:   core.ChannelFromSettings(cfg.Channels.Settings[0]),
+			primary:   defs[0],
 		},
 		cfg: cfg,
 	}
@@ -392,7 +393,7 @@ func (n *Node) ourPosition() ([]byte, core.ChannelDef, bool) {
 		n.base.log.Error("failed to marshal Position", "error", err)
 		return nil, nil, false
 	}
-	return posBytes, core.ChannelFromSettings(table[idx].Settings), true
+	return posBytes, core.ChannelsFromSet(n.cfg.Channels)[idx], true
 }
 
 // requestIsForUs reports whether a want_response request is ours to answer.

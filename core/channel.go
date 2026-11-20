@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/kabili207/meshtastic-go/core/crypto"
+	"github.com/kabili207/meshtastic-go/core/lora"
 	pb "github.com/kabili207/meshtastic-go/core/proto"
 )
 
@@ -84,23 +85,54 @@ func (c *Channel) GetHash() uint32 {
 	return crypto.ChannelHash(c.Name, c.Key)
 }
 
-// ChannelFromSettings creates a Channel from a protobuf ChannelSettings.
+// ChannelFromSettings creates a Channel from the settings of a primary channel,
+// where an empty PSK means no encryption, as it does in firmware. For a whole
+// channel set use ChannelsFromSet, which also resolves secondaries and empty
+// names.
 func ChannelFromSettings(settings *pb.ChannelSettings) *Channel {
 	if settings == nil {
 		return nil
 	}
+	return &Channel{Name: settings.Name, Key: settingsKey(settings.Psk)}
+}
 
-	name := settings.Name
-	key := settings.Psk
-
-	// Use default key for primary channel with empty/default PSK
-	if len(key) == 0 {
-		key = crypto.DefaultKey
-	} else {
-		key = crypto.ExpandShortPSK(key)
+func settingsKey(psk []byte) []byte {
+	if len(psk) == 0 {
+		return []byte{}
 	}
+	return crypto.ExpandShortPSK(psk)
+}
 
-	return &Channel{Name: name, Key: key}
+// ChannelsFromSet builds the Channel for each slot of a channel set the way
+// firmware's Channels::getName and getKey resolve them. An empty name, or the
+// legacy "Default", takes the modem preset's display name, with a set carrying
+// no LoRa config treated as firmware's default of LongFast. A secondary with no
+// PSK borrows the primary's key, while an empty primary PSK means no encryption.
+// Slots with no settings are nil.
+func ChannelsFromSet(set *pb.ChannelSet) []*Channel {
+	settings := set.GetSettings()
+	out := make([]*Channel, len(settings))
+	for i, s := range settings {
+		if s == nil {
+			continue
+		}
+		ch := ChannelFromSettings(s)
+		if ch.Name == "" || ch.Name == "Default" {
+			ch.Name = defaultChannelName(set.GetLoraConfig())
+		}
+		if len(s.Psk) == 0 && i > 0 && out[0] != nil {
+			ch.Key = out[0].Key
+		}
+		out[i] = ch
+	}
+	return out
+}
+
+func defaultChannelName(cfg *pb.Config_LoRaConfig) string {
+	if cfg == nil {
+		return lora.PresetDisplayName(pb.Config_LoRaConfig_LONG_FAST, true)
+	}
+	return lora.PresetDisplayName(cfg.ModemPreset, cfg.UsePreset)
 }
 
 var (

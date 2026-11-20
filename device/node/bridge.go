@@ -175,9 +175,10 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 	logger := cfg.Logger.WithGroup("bridge").With("node", cfg.NodeID.String())
 
 	// Build channel registry from configured channels
+	defs := core.ChannelsFromSet(cfg.Channels)
 	channels := core.NewChannelRegistry()
-	for _, settings := range cfg.Channels.Settings {
-		if ch := core.ChannelFromSettings(settings); ch != nil {
+	for _, ch := range defs {
+		if ch != nil {
 			channels.Register(ch)
 		}
 	}
@@ -192,7 +193,7 @@ func NewBridge(cfg BridgeConfig) (*BridgeNode, error) {
 			nodeID:    cfg.NodeID,
 			okToMQTT:  cfg.OkToMQTT,
 			hopLimit:  cfg.DefaultHopLimit,
-			primary:   core.ChannelFromSettings(cfg.Channels.Settings[0]),
+			primary:   defs[0],
 		},
 		cfg: cfg,
 	}

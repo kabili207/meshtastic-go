@@ -144,11 +144,11 @@ func (s *Server) channelIndexFor(nodeID uint32) uint32 {
 	if !ok {
 		return 0
 	}
-	for i, settings := range s.cfg.Channels.Settings {
+	for i, def := range core.ChannelsFromSet(s.cfg.Channels) {
 		if i >= core.MaxChannels {
 			break
 		}
-		if core.SameChannel(core.ChannelFromSettings(settings), ch) {
+		if def != nil && core.SameChannel(def, ch) {
 			return uint32(i)
 		}
 	}

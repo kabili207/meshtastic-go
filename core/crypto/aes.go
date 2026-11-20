@@ -1,6 +1,7 @@
 package crypto
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
@@ -37,8 +38,13 @@ func CreateNonce(packetId uint32, fromNode uint32, extraNonce uint32) []byte {
 }
 
 // XOR encrypts or decrypts text with the specified key using AES-CTR.
-// It requires the packetID and sending node ID for the AES IV.
+// It requires the packetID and sending node ID for the AES IV. An empty key is a
+// channel with encryption turned off, and text passes through unchanged, as in
+// firmware's encryptPacket.
 func XOR(text []byte, key []byte, packetID, fromNode uint32) ([]byte, error) {
+	if len(key) == 0 {
+		return bytes.Clone(text), nil
+	}
 	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
 		return nil, fmt.Errorf("key length must be 16, 24, or 32 bytes")
 	}
